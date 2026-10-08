@@ -1,0 +1,22 @@
+// Chart/JS color tokens — mirror the CSS @theme values in index.css.
+export const C = {
+  brand: '#e0361c',
+  brandTint: '#fdf0ec',
+  navy: '#16305a',
+  navyTint: '#eef2f9',
+  pos: '#0a7d45',
+  posTint: '#edf6f0',
+  neg: '#cf3520',
+  negTint: '#fdf0ec',
+  warn: '#a56400',
+  warnTint: '#fbf2e2',
+  fg: '#1a1a1e',
+  fgMuted: '#57575f',
+  fgSubtle: '#8b8b93',
+  line: '#ecece9',
+  lineStrong: '#dcdcd8',
+  surface: '#fafaf9',
+  sunken: '#f4f4f2',
+  panel: '#ffffff',
+  series: ['#16305a', '#e0361c', '#0a7d45', '#a56400', '#6d4bd8'],
+} as const

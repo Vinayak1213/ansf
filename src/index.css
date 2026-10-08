@@ -1,0 +1,126 @@
+@import 'tailwindcss';
+
+/* ============================================================
+   Samurai design system — enterprise light theme.
+   Brand: red #e0361c · AI accent: navy #16305a. Quiet precision.
+   ============================================================ */
+@theme {
+  --font-sans: 'Inter', ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', monospace;
+
+  /* brand + AI accent */
+  --color-brand: #e0361c;
+  --color-brand-hover: #c22d15;
+  --color-brand-tint: #fdf0ec;
+  --color-navy: #16305a;
+  --color-navy-hover: #1e3f72;
+  --color-navy-tint: #eef2f9;
+
+  /* surfaces (warm neutral) */
+  --color-canvas: #ffffff;
+  --color-surface: #fafaf9;
+  --color-panel: #ffffff;
+  --color-sunken: #f4f4f2;
+  --color-line: #ecece9;
+  --color-line-strong: #dcdcd8;
+
+  /* text */
+  --color-fg: #1a1a1e;
+  --color-fg-muted: #57575f;
+  --color-fg-subtle: #8b8b93;
+
+  /* semantic */
+  --color-pos: #0a7d45;
+  --color-pos-tint: #edf6f0;
+  --color-neg: #cf3520;
+  --color-neg-tint: #fdf0ec;
+  --color-warn: #a56400;
+  --color-warn-tint: #fbf2e2;
+
+  /* chart series */
+  --color-c1: #16305a;
+  --color-c2: #e0361c;
+  --color-c3: #0a7d45;
+  --color-c4: #a56400;
+  --color-c5: #6d4bd8;
+
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  --shadow-xs: 0 1px 2px rgba(20, 20, 25, 0.05);
+  --shadow-sm: 0 1px 3px rgba(20, 20, 25, 0.07), 0 1px 2px rgba(20, 20, 25, 0.04);
+  --shadow-md: 0 6px 20px -6px rgba(20, 20, 25, 0.12), 0 2px 6px -2px rgba(20, 20, 25, 0.06);
+  --shadow-lg: 0 16px 48px -10px rgba(20, 20, 25, 0.16);
+  --shadow-pop: 0 10px 34px -8px rgba(20, 20, 25, 0.18);
+
+  --ease-out-quint: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  body {
+    margin: 0;
+    background: var(--color-surface);
+    color: var(--color-fg);
+    font-family: var(--font-sans);
+    font-size: 14px;
+    line-height: 1.5;
+    font-feature-settings: 'cv11', 'ss01';
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-brand);
+    outline-offset: 2px;
+    border-radius: 5px;
+  }
+  ::selection {
+    background: color-mix(in srgb, var(--color-brand) 18%, transparent);
+  }
+  .tnum {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: 'tnum';
+  }
+  .input {
+    height: 36px;
+    width: 100%;
+    border-radius: 9px;
+    border: 1px solid var(--color-line);
+    background: var(--color-panel);
+    padding: 0 12px;
+    font-size: 13px;
+    color: var(--color-fg);
+    outline: none;
+  }
+  .input::placeholder {
+    color: var(--color-fg-subtle);
+  }
+  .input:focus {
+    border-color: var(--color-brand);
+  }
+  /* thin, quiet scrollbars */
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-line-strong) transparent;
+  }
+  *::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  *::-webkit-scrollbar-thumb {
+    background: var(--color-line-strong);
+    border-radius: 999px;
+    border: 3px solid var(--color-surface);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
