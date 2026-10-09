@@ -1,15 +1,17 @@
-import { Activity, BarChart3, FlaskConical } from 'lucide-react'
+import { Activity, BarChart3, Clock, FlaskConical, Rocket } from 'lucide-react'
 import { useState } from 'react'
 import { useNav } from '@/lib/nav'
 import { useExp } from './experiments/ExperimentsProvider'
 import { ExpBehaviorView } from '@/features/behavior/BehaviorView'
-import { Badge, Button, Card, Segmented, SectionHead } from '@/components/ui'
-import { RingGauge } from '@/components/charts'
-import { DivergingBars, ExpOverTimeChart, Matchup, MetricTable, MiniFunnels, FunnelTable, NVarFunnels, NVarOverTimeChart, OverTimeTable, TimingBar, VerdictBadge } from '@/components/expcharts'
+import { Badge, Button, Card, InvestigateLink, Segmented, SectionHead } from '@/components/ui'
+import { useInvestigate } from '@/components/Investigate'
+import { DivergingBars, ExpOverTimeChart, Matchup, MetricTable, MiniFunnels, FunnelTable, NVarFunnels, NVarOverTimeChart, OverTimeTable, VerdictBadge } from '@/components/expcharts'
 import { motion } from 'motion/react'
 import { cn, inr, num } from '@/lib/utils'
-import { EXPERIMENTS, VERDICT, ecpl, goalVarOf, isNVar, variantCpl } from '@/data/samurai'
-import { expPage, readinessPct } from '@/data/experiments'
+import { EXPERIMENTS, PAGES, VERDICT, ecpl, goalVarOf, isNVar, variantCpl } from '@/data/samurai'
+import { expPage, expVariantPage } from '@/data/experiments'
+import { elKeyOf } from '@/data/templates'
+import { PageCanvas } from './experiments/PageCanvas'
 import { C } from '@/lib/tokens'
 
 const VCOLOR = ['bg-navy', 'bg-brand', 'bg-pos', 'bg-warn', 'bg-fg/60']
@@ -18,17 +20,40 @@ const badgeTone: Record<string, string> = { pos: 'bg-pos-tint text-pos', navy: '
 
 export function ExperimentDetail({ id }: { id: string }) {
   const { go } = useNav()
-  const { openDeclare, openStop } = useExp()
+  const { openDeclare, openStop, newExperiment } = useExp()
+  const investigate = useInvestigate()
   const e = EXPERIMENTS.find((x) => x.id === id)
   const [view, setView] = useState<{ funnel: 'graph' | 'table'; overtime: 'graph' | 'table'; evidence: 'graph' | 'table' }>({ funnel: 'graph', overtime: 'graph', evidence: 'graph' })
   const [lens, setLens] = useState<'result' | 'behavior'>('result')
   if (!e) return <div className="p-10 text-fg-subtle">Experiment not found.</div>
 
   const p = expPage(e)
+  const vpage = expVariantPage(e)
+  const dstr = `${e.days} day${e.days === 1 ? '' : 's'}`
+  const runLabel = e.days === 0
+    ? (e.status === 'ended' ? 'Ended today' : e.status === 'stopped' ? 'Stopped today' : 'Launched today')
+    : e.status === 'ended' ? `Ran ${dstr}`
+    : e.status === 'stopped' ? `Stopped after ${dstr}`
+    : `Running · ${dstr} in`
   const cc = ecpl(e.control)
   const vc = ecpl(e.variant)
   const vd = VERDICT[e.verdict]
-  const canAct = e.status === 'running' || e.status === 'limited'
+  const canAct = e.status === 'running'
+  const cplDrill = () => investigate({
+    title: 'Cost per lead — how it’s calculated',
+    definition: 'Cost per lead = ad spend ÷ leads, worked out separately for each version.',
+    columns: [
+      { key: 'v', label: 'Version' },
+      { key: 's', label: 'Spend', align: 'right' },
+      { key: 'l', label: 'Leads', align: 'right' },
+      { key: 'c', label: 'Spend ÷ leads', align: 'right' },
+    ],
+    rows: [
+      { v: 'Control (A)', s: inr(e.control.spend), l: num(e.control.leads), c: cc != null ? `${inr(e.control.spend)} ÷ ${num(e.control.leads)} = ${inr(cc)}` : '—' },
+      { v: `Variant B${vpage ? ' · ' + vpage.name : ''}`, s: inr(e.variant.spend), l: num(e.variant.leads), c: vc != null ? `${inr(e.variant.spend)} ÷ ${num(e.variant.leads)} = ${inr(vc)}` : '—' },
+    ],
+    note: 'Spend is each version’s even share of the test budget; leads are the goal conversions it produced. A version with no leads shows “—” — we never divide by zero.',
+  })
   const toggle = (key: 'funnel' | 'overtime' | 'evidence') => (
     <Segmented value={view[key]} onChange={(v) => setView((s) => ({ ...s, [key]: v }))} options={[{ value: 'graph', label: 'Graph' }, { value: 'table', label: 'Table' }]} />
   )
@@ -43,7 +68,8 @@ export function ExperimentDetail({ id }: { id: string }) {
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight text-fg">{e.name}</h1>
           <p className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 text-[13px] text-fg-subtle">
-            <span>{p && <>On <b className="text-fg-muted">{p.name}</b> · </>}Goal: {e.goal}</span>
+            <span>{p && <>On <b className="text-fg-muted">{p.name}</b>{vpage && <> vs <b className="text-fg-muted">{vpage.name}</b></>} · </>}Goal: {e.goal}</span>
+            <span className="inline-flex items-center gap-1 rounded-md bg-sunken px-1.5 py-0.5 text-[11.5px] font-medium text-fg-muted"><Clock className="h-3 w-3" /> {runLabel}</span>
             {e.templateName && <button onClick={() => go('sandbox', e.templateId ?? 'new')} className="inline-flex items-center gap-1 rounded-md border border-line bg-sunken px-1.5 py-0.5 text-[11px] font-medium text-fg-muted transition-colors hover:border-navy/40 hover:text-navy" title="Open the template this test came from"><FlaskConical className="h-3 w-3" /> {e.templateName}</button>}
           </p>
         </div>
@@ -87,38 +113,6 @@ export function ExperimentDetail({ id }: { id: string }) {
     )
   }
 
-  // ---- limited ----
-  if (e.verdict === 'limited') {
-    const rows = [['20%', '~4,400', '~16 months'], ['50%', '~700', '~2.6 months'], ['100%', '~175', '~3 weeks']]
-    return (
-      <div className="mx-auto max-w-[900px] px-8 py-7">
-        {head}
-        <Card className="border-warn/25 bg-warn-tint/40 p-5">
-          <VerdictBadge e={e} />
-          <p className="mt-2 text-[13.5px] leading-relaxed text-fg-muted">At this page's volume, the chosen goal (<b>{e.goal}</b>) can't reach a reliable verdict in a usable window. That's about the traffic, not your versions.</p>
-        </Card>
-        <div className="mt-5"><SectionHead title="Why — the arithmetic" /></div>
-        <Card className="overflow-hidden">
-          <table className="w-full text-[13px]">
-            <thead className="border-b border-line text-fg-subtle"><tr><th className="px-4 py-2.5 text-left font-medium">Improvement sought</th><th className="px-4 py-2.5 text-right font-medium">Sessions needed / variant</th><th className="px-4 py-2.5 text-right font-medium">At this volume</th></tr></thead>
-            <tbody>{rows.map((r) => <tr key={r[0]} className="border-b border-line last:border-0"><td className="px-4 py-2.5">{r[0]}</td><td className="px-4 py-2.5 text-right tnum">{r[1]}</td><td className="px-4 py-2.5 text-right tnum font-semibold">{r[2]}</td></tr>)}</tbody>
-          </table>
-          <div className="border-t border-line bg-surface/60 px-4 py-2.5 text-[11.5px] text-fg-subtle">Only large changes are findable in a sane window — which is why the goal defaults to a micro-conversion.</div>
-        </Card>
-        <div className="mt-5"><SectionHead title="Your options" /></div>
-        <Card>
-          {[['1', 'Switch the goal to Apply-Now clicks', 'Decide in about 3 weeks instead of months.'], ['2', 'Test a bigger change', 'A larger swing needs far less traffic to detect.'], ['3', 'Pool with a sibling page', `Combine ${p?.name ?? 'this page'} with a similar programme to raise volume.`]].map((o) => (
-            <div key={o[0]} className="flex items-center gap-3 border-b border-line px-5 py-3.5 last:border-0">
-              <span className="grid h-6 w-6 place-items-center rounded-full bg-navy text-[11px] font-bold text-white">{o[0]}</span>
-              <div className="flex-1"><b className="text-[13.5px] text-fg">{o[1]}</b><p className="text-[12px] text-fg-subtle">{o[2]}</p></div>
-            </div>
-          ))}
-        </Card>
-        <div className="mt-5"><WhyCard e={e} /></div>
-      </div>
-    )
-  }
-
   // ---- collecting (just launched) ----
   if (cc == null || vc == null) {
     return (
@@ -128,7 +122,6 @@ export function ExperimentDetail({ id }: { id: string }) {
           <Badge tone="neutral">Collecting</Badge>
           <p className="mt-2 text-[13.5px] leading-relaxed text-fg-muted">This test is live and splitting traffic evenly. A verdict appears once each version has enough events.</p>
         </Card>
-        <div className="mt-5"><GaugesRow e={e} /></div>
         <div className="mt-5"><WhyCard e={e} /></div>
       </div>
     )
@@ -144,12 +137,16 @@ export function ExperimentDetail({ id }: { id: string }) {
     : e.verdict === 'low' ? 'Not shipping a worse page is value too.'
     : e.verdict === 'nodiff' ? "A real result — it saved you from shipping a change that wouldn't have paid." : ''
 
+  // the shipped version becomes the baseline for a follow-up test. Winner from the decision, else the cheaper arm.
+  const winnerLetter: 'A' | 'B' = e.decision?.win ?? (better ? 'B' : 'A')
+  const winnerPage = winnerLetter === 'A' ? p : (vpage ?? p)
+
   return (
     <div className="mx-auto max-w-[900px] px-8 py-7">
       {head}
       {/* verdict hero */}
       <Card className="p-5">
-        <div className="mb-4"><VerdictBadge e={e} /></div>
+        <div className="mb-4 flex items-center justify-between gap-3"><VerdictBadge e={e} /><InvestigateLink onClick={cplDrill} /></div>
         <Matchup e={e} />
         <p className="mt-4 text-[13.5px] leading-relaxed text-fg-muted">{summary}</p>
         {honesty && <p className="mt-2 text-[12px] italic leading-relaxed text-fg-subtle">{honesty}</p>}
@@ -186,9 +183,6 @@ export function ExperimentDetail({ id }: { id: string }) {
         </Card>
       </div>
 
-      {/* gauges */}
-      <div className="mt-5"><GaugesRow e={e} /></div>
-
       {/* why + decision */}
       <div className="mt-5"><WhyCard e={e} /></div>
       {e.status === 'ended' && e.decision && (
@@ -201,25 +195,30 @@ export function ExperimentDetail({ id }: { id: string }) {
           </Card>
         </div>
       )}
-    </div>
-  )
-}
-
-function GaugesRow({ e }: { e: (typeof EXPERIMENTS)[number] }) {
-  const rp = readinessPct(e)
-  const decideDay = e.status === 'ended' ? e.days : e.estDays ?? (e.verdict === 'pending' ? 20 : 12)
-  const pct = Math.min(100, Math.round(((e.days || 0) / decideDay) * 100))
-  const cap = e.status === 'ended' ? `Decided on day ${e.days}.` : e.verdict === 'pending' ? `Day ${e.days} — below the reading threshold. Check back around day ${decideDay}.` : `Day ${e.days} of about ${decideDay}. The ${e.goal} reaches a verdict around day ${decideDay}.`
-  return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <Card className="p-5">
-        <SectionHead title="Readiness" hint="evidence collected" />
-        <RingGauge value={rp} label={rp >= 100 ? 'Ready to call' : 'Collecting'} sub={rp >= 100 ? 'enough events for this verdict' : 'more events needed'} color={rp >= 100 ? C.pos : C.navy} />
-      </Card>
-      <Card className="p-5">
-        <SectionHead title="Timing" hint="decision clock" />
-        <TimingBar pct={pct} caption={cap} />
-      </Card>
+      {e.status === 'ended' && e.decision && (
+        <div className="mt-5">
+          <SectionHead title="What’s next" />
+          <Card className="p-5">
+            <div className="flex items-start gap-3">
+              <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-brand-tint text-brand"><Rocket className="h-[18px] w-[18px]" /></span>
+              <div className="flex-1">
+                <b className="text-[14px] text-fg">Build on this result</b>
+                <p className="mt-0.5 text-[13px] leading-relaxed text-fg-muted">
+                  {winnerLetter === 'A'
+                    ? <>You kept <b className="text-fg-muted">{winnerPage?.name ?? 'the control'}</b> — the variant didn’t beat it. Try a different change against it.</>
+                    : better
+                      ? <>Variant B shipped — now live on <b className="text-fg-muted">{winnerPage?.name ?? 'the page'}</b>, turning ad spend into leads <b className="text-fg">{dpct}% cheaper</b>. Test your next idea against it to keep lowering cost per lead.</>
+                      : <>Variant B shipped — now live on <b className="text-fg-muted">{winnerPage?.name ?? 'the page'}</b>. Test your next idea against it.</>}
+                </p>
+                {e.decision.learned && <p className="mt-2 rounded-[10px] bg-sunken px-3 py-2 text-[12px] text-fg-subtle"><b className="text-fg-muted">Carry forward:</b> {e.decision.learned}</p>}
+                <div className="mt-3">
+                  <Button variant="primary" size="md" onClick={() => newExperiment(winnerPage?.id)}><Rocket className="h-3.5 w-3.5" /> Run a follow-up test</Button>
+                </div>
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
     </div>
   )
 }
@@ -237,6 +236,30 @@ function NVariantResult({ e }: { e: (typeof EXPERIMENTS)[number] }) {
   const cplOf = (letter: string) => variantCpl(e, letter)
   const ranked = [...variants].filter((v) => cplOf(v.letter) != null).sort((a, b) => cplOf(a.letter)! - cplOf(b.letter)!)
   const best = ranked[0]
+  const investigate = useInvestigate()
+  const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1)
+  const cplDrill = () => {
+    const totalSpend = variants.reduce((s, v) => s + v.spend, 0)
+    const totalGoal = variants.reduce((s, v) => s + goalCount(v.letter), 0)
+    const blended = totalGoal ? Math.round(totalSpend / totalGoal) : null
+    investigate({
+      title: `Cost per ${goalName} — how it’s calculated`,
+      definition: `Cost per ${goalName} = each version’s ad spend ÷ the ${plur(2, goalName)} it produced. Worked per version, so pages that are otherwise different compare like-for-like.`,
+      columns: [
+        { key: 'v', label: 'Version' },
+        { key: 's', label: 'Spend', align: 'right' },
+        { key: 'g', label: cap(plur(2, goalName)), align: 'right' },
+        { key: 'c', label: `Spend ÷ ${goalName}`, align: 'right' },
+      ],
+      rows: variants.map((v) => {
+        const cnt = goalCount(v.letter)
+        const cpl = cplOf(v.letter)
+        return { v: `Version ${v.letter} · ${v.name}`, s: inr(v.spend), g: num(cnt), c: cpl != null ? `${inr(v.spend)} ÷ ${num(cnt)} = ${inr(cpl)}` : '—' }
+      }),
+      foot: { v: 'All versions (blended)', s: inr(totalSpend), g: num(totalGoal), c: blended != null ? `${inr(totalSpend)} ÷ ${num(totalGoal)} = ${inr(blended)}` : '—' },
+      note: `Spend is each version’s allocation; ${plur(2, goalName)} are the goal variable’s count per version. A version with no ${plur(2, goalName)} shows “—” — we never divide by zero.`,
+    })
+  }
 
   return (
     <>
@@ -255,7 +278,7 @@ function NVariantResult({ e }: { e: (typeof EXPERIMENTS)[number] }) {
       </Card>
 
       <div className="mt-5">
-        <SectionHead title={`Cost per ${goalName} by version`} hint="the decision" />
+        <SectionHead title={`Cost per ${goalName} by version`} hint="the decision" right={<InvestigateLink onClick={cplDrill} />} />
         <Card className="p-5">
           <div className="space-y-2.5">
             {variants.map((v, i) => {
@@ -334,7 +357,7 @@ function NVariantResult({ e }: { e: (typeof EXPERIMENTS)[number] }) {
         </Card>
       </div>
 
-      <div className="mt-5"><GaugesRow e={e} /></div>
+      <NVarPlacement e={e} />
 
       {e.status === 'ended' && e.decision && (
         <div className="mt-5">
@@ -347,6 +370,38 @@ function NVariantResult({ e }: { e: (typeof EXPERIMENTS)[number] }) {
         </div>
       )}
     </>
+  )
+}
+
+/* Visual placement preview — reconstructs, per version, which button each variable sits on (as set up
+   in the builder) and renders it read-only on that version's own page. */
+function NVarPlacement({ e }: { e: (typeof EXPERIMENTS)[number] }) {
+  const variants = e.variants ?? []
+  const variables = e.variables ?? []
+  const [pv, setPv] = useState(variants[0]?.letter ?? 'A')
+  const cur = variants.find((v) => v.letter === pv) ?? variants[0]
+  if (!cur || variables.length === 0) return null
+  const page = PAGES.find((p) => p.id === cur.pageId)
+  const placement: Record<string, string> = {}
+  for (const vr of variables) {
+    const arm = vr.arms[cur.letter]
+    const key = arm?.elKey ?? (arm?.button ? elKeyOf(arm.button) : undefined)
+    if (key) placement[vr.id] = key
+  }
+  return (
+    <div className="mt-5">
+      <SectionHead title="Where each variable sits" hint="the button each variable maps to on every version — as set up" />
+      <Card className="p-5">
+        <div className="mb-3 flex items-center gap-1.5 overflow-x-auto pb-0.5">
+          {variants.map((v) => (
+            <button key={v.letter} onClick={() => setPv(v.letter)} className={cn('inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1.5 text-[12px] font-medium transition-colors', cur.letter === v.letter ? 'border-navy bg-navy-tint text-navy' : 'border-line text-fg-muted hover:border-line-strong')}>
+              <b>Version {v.letter}</b><span className="hidden text-fg-subtle sm:inline">· {v.name}</span>
+            </button>
+          ))}
+        </div>
+        <PageCanvas readOnly variables={variables} placement={placement} page={page} caption={`pages.onlinejain.com${page?.path ?? ''} · Version ${cur.letter}`} />
+      </Card>
+    </div>
   )
 }
 

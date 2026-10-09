@@ -9,7 +9,7 @@ const PAGE_NET: Record<string, Net> = {
 export const pageNet = (id: string): Net => PAGE_NET[id] ?? 'google'
 
 export const pageRunningTest = (id: string) =>
-  EXPERIMENTS.find((e) => e.pageId === id && (e.status === 'running' || e.status === 'limited'))
+  EXPERIMENTS.find((e) => e.pageId === id && e.status === 'running')
 export const pageEndedTest = (id: string) => EXPERIMENTS.find((e) => e.pageId === id && e.status === 'ended')
 
 export type Health = { tone: 'ok' | 'warn' | 'bad'; txt: string }

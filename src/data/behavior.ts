@@ -165,6 +165,7 @@ export interface ExpBehaviorData {
   primary: BehMetric
   dir: number
   sig: boolean
+  collecting: boolean
   headline: string
   days: number
   sessions: { c: number; v: number }
@@ -176,12 +177,17 @@ export interface ExpBehaviorData {
 export function expBehavior(e: Experiment): ExpBehaviorData {
   const p = PAGES.find((x) => x.id === e.pageId)
   const base = p ? pageBehavior(p) : undefined
+  // quick A/B against a second existing page → read the variant arm's shape from that page
+  const variantPage = e.variantPageId ? PAGES.find((x) => x.id === e.variantPageId) : undefined
+  const vbase = variantPage ? pageBehavior(variantPage) : undefined
   const rand = rng(e.id + 'x')
   const dir = e.verdict === 'best' || e.verdict === 'good' ? 1 : e.verdict === 'low' ? -1 : 0
   const mag = e.verdict === 'best' ? 1 : e.verdict === 'good' ? 0.7 : e.verdict === 'low' ? 0.85 : 0.25
-  const powered = e.verdict !== 'pending' && e.verdict !== 'limited'
-  const ctrlN = e.control.v || (base ? r2(base.sessions / 2) : 300)
-  const varN = e.variant.v || ctrlN
+  const powered = e.verdict !== 'pending'
+  // volumes are strictly the test's OWN sessions since launch — never a page-lifetime fallback
+  const ctrlN = e.control.v
+  const varN = e.variant.v
+  const collecting = ctrlN === 0 && varN === 0
   const primaryKey = /form/i.test(e.goal) ? 'form' : /scroll/i.test(e.goal) ? 'scroll' : 'apply'
   const bump = (x: number, pct: number, betterUp: boolean) => r2((x + x * pct * mag * dir * (betterUp ? 1 : -1)) * 10) / 10
   const ciHalf = clamp(r2(60 / Math.sqrt(Math.max(ctrlN, 1) / 40)), 3, 60)
@@ -193,29 +199,35 @@ export function expBehavior(e: Experiment): ExpBehaviorData {
     return { key, label, unit, c, v, betterUp, role, deltaPct, ciLow, ciHigh, sig }
   }
 
+  // variant-arm shape comes from the real variant page when this is a page-vs-page test; else it's modeled off control
+  const ratioOf = (b: PageBehavior | undefined, n: number) => (b && b.sessions ? Math.max(b.sessions / Math.max(n, 1), 1) : 1)
   const corrApply = e.corr.find((c) => /apply/i.test(c.label))
   const corrForm = e.corr.find((c) => /form/i.test(c.label))
   const scrollC = base?.scroll.formReachPct ?? 50
+  const scrollV = vbase ? vbase.scroll.formReachPct : clamp(bump(scrollC, 0.18, true), 5, 95)
   const activeC = base?.engagement.activeSec ?? 45
-  const rageC = base ? Math.max(2, r2(base.friction.rageClicks / Math.max(base.sessions / ctrlN, 1))) : 10
+  const activeV = vbase ? clamp(vbase.engagement.activeSec, 10, 140) : clamp(r2(bump(activeC, 0.16, true)), 10, 140)
+  const rageC = base ? Math.max(2, r2(base.friction.rageClicks / ratioOf(base, ctrlN))) : 10
+  const rageV = vbase ? Math.max(0, r2(vbase.friction.rageClicks / ratioOf(vbase, varN))) : Math.max(0, r2(bump(rageC, 0.32, false)))
   const applyC = corrApply?.c ?? 44
   const applyV = corrApply?.v ?? r2(bump(applyC, 0.2, true))
   const formC = corrForm?.c ?? 70
   const formV = corrForm?.v ?? r2(bump(formC, 0.15, true))
   const roleOf = (k: string): 'primary' | 'secondary' | 'guardrail' => (k === primaryKey ? 'primary' : k === 'rage' ? 'guardrail' : 'secondary')
   const metrics: BehMetric[] = [
-    mk('scroll', 'Scroll-to-form rate', 'pct', scrollC, clamp(bump(scrollC, 0.18, true), 5, 95), true, roleOf('scroll')),
+    mk('scroll', 'Scroll-to-form rate', 'pct', scrollC, scrollV, true, roleOf('scroll')),
     mk('apply', 'Apply-Now clicks', 'num', applyC, applyV, true, roleOf('apply')),
     mk('form', 'Form starts', 'num', formC, formV, true, roleOf('form')),
-    mk('active', 'Active time on page', 'sec', activeC, clamp(r2(bump(activeC, 0.16, true)), 10, 140), true, roleOf('active')),
-    mk('rage', 'Rage clicks', 'num', rageC, Math.max(0, r2(bump(rageC, 0.32, false))), false, 'guardrail'),
+    mk('active', 'Active time on page', 'sec', activeC, activeV, true, roleOf('active')),
+    mk('rage', 'Rage clicks', 'num', rageC, rageV, false, 'guardrail'),
   ].sort((a, b) => (a.role === 'primary' ? -2 : a.role === 'guardrail' ? 2 : 0) - (b.role === 'primary' ? -2 : b.role === 'guardrail' ? 2 : 0))
   const primary = metrics.find((m) => m.role === 'primary')!
 
   // primary metric over time (control ~flat, variant converges to its endpoint)
-  const days = Math.max(e.days || 6, 5)
-  const series = Array.from({ length: days }, (_, i) => {
-    const t = i / (days - 1)
+  const days = e.days
+  const seriesLen = Math.max(days || 6, 5)
+  const series = Array.from({ length: seriesLen }, (_, i) => {
+    const t = i / (seriesLen - 1)
     return { day: i + 1, c: r2(primary.c * (1 + (rand() - 0.5) * 0.06) * 10) / 10, v: r2((primary.c + (primary.v - primary.c) * (0.3 + 0.7 * t)) * (1 + (rand() - 0.5) * 0.05) * 10) / 10 }
   })
 
@@ -249,12 +261,12 @@ export function expBehavior(e: Experiment): ExpBehaviorData {
   }
 
   const pl = primary.label.toLowerCase()
-  const headline = e.verdict === 'pending' ? 'Too early — behaviour not yet distinguishable'
-    : e.verdict === 'limited' ? 'Not enough traffic to read behaviour on this goal'
+  const headline = collecting ? 'Collecting — no behaviour captured yet'
+    : e.verdict === 'pending' ? 'Too early — behaviour not yet distinguishable'
     : primary.sig ? (dir > 0 ? `Variant lifted ${pl} ${Math.abs(primary.deltaPct)}% — significant` : `Variant hurt ${pl} ${Math.abs(primary.deltaPct)}% — significant`)
     : (dir > 0 ? `Variant is ahead on ${pl}, not yet significant` : dir < 0 ? `Variant is behind on ${pl}, not yet significant` : 'No behavioural difference yet')
 
-  return { metrics, primaryKey, primary, dir, sig: primary.sig, headline, days, sessions: { c: ctrlN, v: varN }, series, arms, sessionsByArm }
+  return { metrics, primaryKey, primary, dir, sig: primary.sig, collecting, headline, days, sessions: { c: ctrlN, v: varN }, series, arms, sessionsByArm }
 }
 
 /** deep-link intent: open a page detail straight into its Behavior view (e.g. from Overview) */

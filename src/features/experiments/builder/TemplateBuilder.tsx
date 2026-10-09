@@ -1,18 +1,21 @@
 import { AnimatePresence, motion } from 'motion/react'
 import { ArrowLeft, ArrowRight, Check, Rocket, Save, X } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useNav } from '@/lib/nav'
-import { useExp } from '../ExperimentsProvider'
+import { useExp, takeSeedPage } from '../ExperimentsProvider'
 import { Button } from '@/components/ui'
 import { cn } from '@/lib/utils'
 import { LETTERS, blankTemplate, guardrailDef, makeVarId, type ExperimentTemplate } from '@/data/templates'
+import { StepStart } from './StepStart'
 import { StepTrack } from './StepTrack'
 import { StepDashboard } from './StepDashboard'
 import { StepMonitor } from './StepMonitor'
 import { StepReview } from './StepReview'
 
+// The single creation flow. Step 0 ("Start") picks a template or starts blank; the rest configure & launch.
 const STEPS = [
-  { k: 'track', label: 'Variables', hint: 'Pick variants, add variables, place them' },
+  { k: 'start', label: 'Start', hint: 'Start from a template or from scratch' },
+  { k: 'track', label: 'Variants', hint: 'Pick the pages to compare (A–E), add variables, place them' },
   { k: 'dashboard', label: 'Dashboard', hint: 'The A vs B vs C comparison you’ll watch' },
   { k: 'monitor', label: 'Monitor', hint: 'Set guardrails & alerts' },
   { k: 'review', label: 'Review', hint: 'Check everything, then launch' },
@@ -42,8 +45,15 @@ export interface StepProps {
 export function TemplateBuilder({ id }: { id: string }) {
   const { go } = useNav()
   const { getTemplate, saveTemplate, launchFromTemplate } = useExp()
-  const [t, setT] = useState<ExperimentTemplate>(() => (id === 'new' ? blankTemplate() : structuredClone(getTemplate(id) ?? blankTemplate())))
-  const [step, setStep] = useState(0)
+  const isNew = id === 'new'
+  const [seed] = useState(() => (isNew ? takeSeedPage() : undefined))
+  const [t, setT] = useState<ExperimentTemplate>(() => {
+    if (isNew) { const b = blankTemplate(); if (seed) b.variants.push({ pageId: seed, letter: 'A' }); return b }
+    return structuredClone(getTemplate(id) ?? blankTemplate())
+  })
+  // start on the chooser only for a blank new experiment; a seeded page or an edited template jumps to Variants
+  const trackIdx = STEPS.findIndex((s) => s.k === 'track')
+  const [step, setStep] = useState(isNew && !seed ? 0 : trackIdx)
   const [dir, setDir] = useState(1)
 
   const update = (fn: (d: ExperimentTemplate) => void) => setT((prev) => { const d = structuredClone(prev); fn(d); return d })
@@ -91,34 +101,40 @@ export function TemplateBuilder({ id }: { id: string }) {
 
   const namedVars = t.variables.filter((v) => v.name.trim()).length
   const ready = t.variants.length >= 2 && namedVars >= 1
-  const canProceed = step === 0 ? ready : true
+  const cur = STEPS[step].k
+  const canProceed = cur === 'start' ? false : cur === 'track' ? ready : true
   const stepProps: StepProps = { t, update, addVariant, removeVariant, setVariantLetter, addVariable, renameVariable, setGoalVariable, removeVariable, assign, setGuard, goTo: goStep }
-  const reachable = useMemo(() => (i: number) => i === 0 || ready, [ready])
+  const reachable = (i: number) => { const k = STEPS[i].k; return k === 'start' ? isNew : k === 'track' ? true : ready }
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-surface text-fg">
       {/* header */}
       <header className="flex h-14 shrink-0 items-center gap-3 border-b border-line bg-canvas px-4">
-        <button onClick={exit} title="Exit builder" className="grid h-8 w-8 place-items-center rounded-[8px] text-fg-subtle transition-colors hover:bg-sunken hover:text-fg"><X className="h-4 w-4" /></button>
+        <button onClick={exit} title="Exit" className="grid h-8 w-8 place-items-center rounded-[8px] text-fg-subtle transition-colors hover:bg-sunken hover:text-fg"><X className="h-4 w-4" /></button>
         <span className="h-5 w-px bg-line" />
         <div className="flex items-center gap-2">
           <span className="grid h-6 w-6 shrink-0 place-items-center rounded-[7px] bg-brand shadow-[inset_0_1px_0_rgba(255,255,255,.28)]"><span className="block h-2 w-2 rounded-full bg-white" /></span>
-          <input
-            value={t.name}
-            onChange={(e) => update((d) => { d.name = e.target.value })}
-            placeholder="Untitled template"
-            className="w-[240px] rounded-[7px] border border-transparent bg-transparent px-1.5 py-1 text-[14px] font-semibold text-fg outline-none transition-colors placeholder:text-fg-subtle hover:border-line focus:border-navy focus:bg-panel"
-          />
+          {cur === 'start' ? (
+            <span className="text-[14px] font-semibold text-fg">New experiment</span>
+          ) : (
+            <input
+              value={t.name}
+              onChange={(e) => update((d) => { d.name = e.target.value })}
+              placeholder="Untitled experiment"
+              className="w-[240px] rounded-[7px] border border-transparent bg-transparent px-1.5 py-1 text-[14px] font-semibold text-fg outline-none transition-colors placeholder:text-fg-subtle hover:border-line focus:border-navy focus:bg-panel"
+            />
+          )}
         </div>
         <div className="ml-auto flex items-center gap-2">
-          <span className="hidden text-[12px] text-fg-subtle sm:inline">Step {step + 1} of {STEPS.length}</span>
-          <Button variant="default" size="sm" onClick={save}><Save className="h-3.5 w-3.5" /> Save</Button>
+          {cur !== 'start' && <span className="hidden text-[12px] text-fg-subtle sm:inline">Step {step} of {STEPS.length - 1}</span>}
+          {cur !== 'start' && <Button variant="default" size="sm" onClick={save}><Save className="h-3.5 w-3.5" /> Save</Button>}
         </div>
       </header>
 
       {/* step rail */}
       <div className="flex shrink-0 items-center justify-center gap-1 border-b border-line bg-canvas px-4 py-2.5 sm:gap-2">
         {STEPS.map((s, i) => {
+          if (i === 0 && !isNew) return null // no Start pill when editing a saved template
           const done = i < step
           const current = i === step
           const canJump = reachable(i)
@@ -156,26 +172,33 @@ export function TemplateBuilder({ id }: { id: string }) {
             transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
             className="h-full overflow-y-auto"
           >
-            {step === 0 && <StepTrack {...stepProps} />}
-            {step === 1 && <StepDashboard {...stepProps} />}
-            {step === 2 && <StepMonitor {...stepProps} />}
-            {step === 3 && <StepReview {...stepProps} onSave={save} onLaunch={launch} />}
+            {step === 0 && <StepStart onUse={(tpl) => { setT(structuredClone(tpl)); goStep(trackIdx) }} onBlank={() => { setT(blankTemplate()); goStep(trackIdx) }} />}
+            {step === 1 && <StepTrack {...stepProps} />}
+            {step === 2 && <StepDashboard {...stepProps} />}
+            {step === 3 && <StepMonitor {...stepProps} />}
+            {step === 4 && <StepReview {...stepProps} onSave={save} onLaunch={launch} />}
           </motion.div>
         </AnimatePresence>
       </div>
 
       {/* footer nav */}
       <footer className="flex h-16 shrink-0 items-center gap-3 border-t border-line bg-canvas px-5">
-        {step > 0 ? (
-          <Button variant="default" size="md" onClick={() => goStep(step - 1)}><ArrowLeft className="h-4 w-4" /> Back</Button>
-        ) : (
+        {cur === 'start' ? (
           <Button variant="default" size="md" onClick={exit}>Cancel</Button>
+        ) : step === 1 ? (
+          isNew
+            ? <Button variant="default" size="md" onClick={() => goStep(0)}><ArrowLeft className="h-4 w-4" /> Back</Button>
+            : <Button variant="default" size="md" onClick={exit}>Cancel</Button>
+        ) : (
+          <Button variant="default" size="md" onClick={() => goStep(step - 1)}><ArrowLeft className="h-4 w-4" /> Back</Button>
         )}
         <div className="flex-1 text-center">
           <div className="text-[12.5px] font-medium text-fg">{STEPS[step].label}</div>
           <div className="text-[11px] text-fg-subtle">{STEPS[step].hint}</div>
         </div>
-        {step < STEPS.length - 1 ? (
+        {cur === 'start' ? (
+          <span className="w-[92px]" />
+        ) : step < STEPS.length - 1 ? (
           <Button variant="primary" size="md" disabled={!canProceed} onClick={() => goStep(step + 1)}>Continue <ArrowRight className="h-4 w-4" /></Button>
         ) : (
           <div className="flex items-center gap-2">

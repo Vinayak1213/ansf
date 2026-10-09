@@ -21,7 +21,7 @@ export function PageDetail({ id }: { id: string }) {
   const { factor: f, label } = useRange()
   const { go } = useNav()
   const toast = useToast()
-  const { openWizard } = useExp()
+  const { newExperiment } = useExp()
   const investigate = useInvestigate()
   const [view, setView] = useState<'performance' | 'behavior'>(() => (takePendingBehavior(id) ? 'behavior' : 'performance'))
   const [, bump] = useReducer((x) => x + 1, 0)
@@ -29,8 +29,8 @@ export function PageDetail({ id }: { id: string }) {
   if (!p) return <div className="p-10 text-fg-subtle">Page not found.</div>
 
   // user-created pages: a draft (not live) or a freshly published page still awaiting its first data
-  if (p.draft) return <DraftPageDetail p={p} onBack={() => go('pages')} onPublish={() => { publishDraftPage(p.id); bump(); toast('Page published — it’s live and collecting its first data.') }} onDelete={() => { removeDraftPage(p.id); toast('Draft deleted.'); go('pages') }} onStartTest={() => openWizard(p.id)} />
-  if (p.spend === 0) return <CollectingPageDetail p={p} onBack={() => go('pages')} onStartTest={() => openWizard(p.id)} />
+  if (p.draft) return <DraftPageDetail p={p} onBack={() => go('pages')} onPublish={() => { publishDraftPage(p.id); bump(); toast('Page published — it’s live and collecting its first data.') }} onDelete={() => { removeDraftPage(p.id); toast('Draft deleted.'); go('pages') }} onStartTest={() => newExperiment(p.id)} />
+  if (p.spend === 0) return <CollectingPageDetail p={p} onBack={() => go('pages')} onStartTest={() => newExperiment(p.id)} />
 
   const h = pageHealth(p)
   const life = lifeState(p)
@@ -60,10 +60,10 @@ export function PageDetail({ id }: { id: string }) {
           ) : ended ? (
             <>
               <Button variant="default" size="md" onClick={() => go('experimentdetail', ended.id)}>View the winner</Button>
-              <Button variant="primary" size="md" onClick={() => openWizard(p.id)}>Start a test</Button>
+              <Button variant="primary" size="md" onClick={() => newExperiment(p.id)}>Start a test</Button>
             </>
           ) : (
-            <Button variant="primary" size="md" onClick={() => openWizard(p.id)}>Start a test</Button>
+            <Button variant="primary" size="md" onClick={() => newExperiment(p.id)}>Start a test</Button>
           )}
         </div>
       </div>

@@ -43,7 +43,7 @@ export interface Campaign {
   good: number
 }
 
-export type Verdict = 'best' | 'good' | 'low' | 'learning' | 'pending' | 'nodiff' | 'limited'
+export type Verdict = 'best' | 'good' | 'low' | 'learning' | 'pending' | 'nodiff'
 export interface Arm {
   v: number
   leads: number
@@ -51,18 +51,19 @@ export interface Arm {
 }
 /* ---- N-variant tests (built in the template builder) — up to 5 variant pages compared on custom variables ---- */
 export interface ExpVariant { letter: string; pageId: string; name: string; v: number; spend: number }
-export interface ExpVarArm { button: string; count: number } // the button a variable maps to on a variant, and its count
+export interface ExpVarArm { button: string; count: number; elKey?: string } // the button a variable maps to on a variant (label + element key), and its count
 export interface ExpVariable { id: string; name: string; isGoal?: boolean; arms: Record<string, ExpVarArm> } // arms keyed by variant letter
 export interface Experiment {
   id: string
   name: string
   group: string
   pageId: string
-  status: 'ended' | 'running' | 'limited' | 'stopped' | 'draft'
+  status: 'ended' | 'running' | 'stopped' | 'draft'
   verdict: Verdict
   goal: string
   days: number
   estDays?: number // projected days-to-verdict, set at launch so the timing panel reconciles with the review estimate
+  variantPageId?: string // quick A/B: the existing page used as Variant B (control = pageId). Lets Result + Behaviour reflect the real second page.
   templateId?: string // the template this test was launched from (stitches Templates ↔ tests)
   templateName?: string
   dashboard?: string[] // panel keys carried from the template, so the test shows the dashboard you built
@@ -73,7 +74,7 @@ export interface Experiment {
   variants?: ExpVariant[] // present on N-variant tests — the versions being compared, A/B/C…
   variables?: ExpVariable[] // present on N-variant tests — the custom metrics, each compared across variants
   narrative: { hyp: string; going: string; decide: string }
-  decision?: { by: string; date: string; reason: string; learned: string }
+  decision?: { by: string; date: string; reason: string; learned: string; win?: 'A' | 'B' }
 }
 export const ecpl = (a: Arm): number | null => (a.leads ? Math.round(a.spend / a.leads) : null)
 
@@ -198,9 +199,10 @@ export const EXPERIMENTS: Experiment[] = [
     narrative: { hyp: 'A benefit-led headline instead of the programme name.', going: 'Behind control and both signals agree — this variant is losing.', decide: 'Enough signal to call it: replace the variant.' },
   },
   {
-    id: 'e-mcom', name: 'CTA colour + copy', pageId: 'mcom', group: 'M.Com', status: 'limited', verdict: 'limited', goal: 'Enrolment', days: 19,
-    control: { v: 150, leads: 6, spend: 9000 }, variant: { v: 148, leads: 7, spend: 9000 }, corr: [],
-    narrative: { hyp: 'A higher-contrast CTA with action copy.', going: 'Cannot conclude at this volume on the chosen goal.', decide: 'Switch the goal to Apply-Now clicks to decide in about 3 weeks.' },
+    id: 'e-mcom', name: 'CTA colour + copy', pageId: 'mcom', group: 'M.Com', status: 'running', verdict: 'good', goal: 'Apply-Now click', days: 19,
+    control: { v: 150, leads: 6, spend: 9000 }, variant: { v: 148, leads: 7, spend: 9000 },
+    corr: [{ label: 'Apply-Now clicks', c: 40, v: 46 }, { label: 'Form starts', c: 72, v: 80 }],
+    narrative: { hyp: 'A higher-contrast CTA with action copy.', going: 'Slightly cheaper per lead and both micro-signals agree so far.', decide: 'At this volume the Apply-Now goal decides around day 24 — a few days out.' },
   },
   {
     id: 'e-home', name: 'Programme redirect', pageId: 'home', group: 'Other', status: 'running', verdict: 'pending', goal: 'Apply-Now click', days: 3,
@@ -290,6 +292,5 @@ export const VERDICT: Record<Verdict, { word: string; tone: 'pos' | 'navy' | 'ne
   learning: { word: 'Learning', tone: 'warn', call: 'Keep running', sub: 'Not enough events to rank' },
   pending: { word: 'Pending', tone: 'neutral', call: 'Too early', sub: 'Under the reading threshold' },
   nodiff: { word: 'No difference', tone: 'neutral', call: 'No difference found', sub: 'No measurable gap' },
-  limited: { word: 'Test-limited', tone: 'warn', call: 'Change the test', sub: 'Cannot conclude at this volume' },
 }
-export const ESTATUS: Record<string, string> = { ended: 'Ended', running: 'Running', limited: 'Test-limited', stopped: 'Stopped', draft: 'Draft' }
+export const ESTATUS: Record<string, string> = { ended: 'Ended', running: 'Running', stopped: 'Stopped', draft: 'Draft' }

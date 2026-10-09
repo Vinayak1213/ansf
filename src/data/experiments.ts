@@ -2,6 +2,8 @@ import { EXPERIMENTS, PAGES, ecpl, variantCpl, type ExpVariable, type Experiment
 
 export const expById = (id: string) => EXPERIMENTS.find((e) => e.id === id)
 export const expPage = (e: Experiment): Page | undefined => PAGES.find((p) => p.id === e.pageId)
+/** quick A/B: the existing page used as Variant B (if any) */
+export const expVariantPage = (e: Experiment): Page | undefined => (e.variantPageId ? PAGES.find((p) => p.id === e.variantPageId) : undefined)
 
 export interface FunnelStage { name: string; value: number; pct: number }
 export function expFunnel(e: Experiment): { ctrl: FunnelStage[]; var: FunnelStage[] } {
@@ -50,7 +52,7 @@ export function buildMetricRows(e: Experiment): MetricRow[] {
 }
 
 export const readinessPct = (e: Experiment) =>
-  ({ best: 100, low: 100, nodiff: 100, good: 75, learning: 45, pending: 20, limited: 35 } as Record<string, number>)[e.verdict] ?? 50
+  ({ best: 100, low: 100, nodiff: 100, good: 75, learning: 45, pending: 20 } as Record<string, number>)[e.verdict] ?? 50
 
 export function estDecision(p: Page | undefined, mult: number) {
   const dailyLeads = (p && p.leads ? p.leads : 30) / 30
@@ -99,8 +101,6 @@ export function nvarDaily(e: Experiment) {
   }
   return { n, series: variants.map((vr, i) => ({ letter: vr.letter, name: vr.name, data: gen(variantCpl(e, vr.letter) ?? 0, i * 0.7) })) }
 }
-
-export const DETECTED = ['Apply Now button', 'Request a callback button', 'Download prospectus button', 'WhatsApp enquiry button', 'Call now button', 'Enquiry form']
 
 export interface Scenario { k: string; name: string; desc: string; mult: number; rec?: boolean }
 export const SCENARIOS: Scenario[] = [

@@ -2,7 +2,6 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { AnimatePresence, motion } from 'motion/react'
 import { X } from 'lucide-react'
 import { createContext, useContext, useReducer, useState, type ReactNode } from 'react'
-import { Wizard, type WizResult } from './Wizard'
 import { Button } from '@/components/ui'
 import { useToast } from '@/components/Toast'
 import { useNav } from '@/lib/nav'
@@ -11,9 +10,15 @@ import { EXPERIMENTS, PAGES, ecpl, type Experiment } from '@/data/samurai'
 import { estDecision, expById } from '@/data/experiments'
 import { TEMPLATES, elLabel, type ExperimentTemplate } from '@/data/templates'
 
+/* a page to pre-seed as Variant A when the builder opens (e.g. "Start a test" from a page). Mirrors the
+   openBehavior/takePendingBehavior bridge — consumed once by the builder on mount. */
+let _seedPage: string | undefined
+export const setSeedPage = (id?: string) => { _seedPage = id }
+export const takeSeedPage = () => { const s = _seedPage; _seedPage = undefined; return s }
+
 const Ctx = createContext<{
   rev: number
-  openWizard: (pageId?: string) => void
+  newExperiment: (pageId?: string) => void
   openDeclare: (id: string) => void
   openStop: (id: string) => void
   templates: ExperimentTemplate[]
@@ -22,7 +27,7 @@ const Ctx = createContext<{
   duplicateTemplate: (t: ExperimentTemplate) => void
   launchFromTemplate: (t: ExperimentTemplate) => void
 }>({
-  rev: 0, openWizard: () => {}, openDeclare: () => {}, openStop: () => {},
+  rev: 0, newExperiment: () => {}, openDeclare: () => {}, openStop: () => {},
   templates: [], getTemplate: () => undefined, saveTemplate: () => {}, duplicateTemplate: () => {}, launchFromTemplate: () => {},
 })
 export const useExp = () => useContext(Ctx)
@@ -33,7 +38,6 @@ export function ExperimentsProvider({ children }: { children: ReactNode }) {
   const [rev, bump] = useReducer((x) => x + 1, 0)
   const toast = useToast()
   const { go } = useNav()
-  const [wiz, setWiz] = useState<{ open: boolean; page?: string }>({ open: false })
   const [declareId, setDeclareId] = useState<string | null>(null)
   const [stopId, setStopId] = useState<string | null>(null)
   const [templates, setTemplates] = useState<ExperimentTemplate[]>(TEMPLATES)
@@ -67,7 +71,7 @@ export function ExperimentsProvider({ children }: { children: ReactNode }) {
     const variants = vs.map((vr) => ({ letter: vr.letter, pageId: vr.pageId, name: pname(vr.pageId), v: 0, spend: 0 }))
     const variables = named.map((v) => ({
       id: v.id, name: v.name.trim(), isGoal: v.isGoal,
-      arms: Object.fromEntries(vs.map((vr) => { const el = t.placement[vr.pageId]?.[v.id]; return [vr.letter, { button: el ? elLabel(el) : '', count: 0 }] })),
+      arms: Object.fromEntries(vs.map((vr) => { const el = t.placement[vr.pageId]?.[v.id]; return [vr.letter, { button: el ? elLabel(el) : '', elKey: el, count: 0 }] })),
     }))
     EXPERIMENTS.unshift({
       id, name: t.name || 'New multi-variant test', pageId: controlPageId, group: p?.group ?? 'Other', status: 'running', verdict: 'pending', goal: goalV.name.trim(), days: 0, estDays: est.days,
@@ -76,33 +80,20 @@ export function ExperimentsProvider({ children }: { children: ReactNode }) {
       variants, variables,
       narrative: { hyp: t.change || '—', going: 'Just launched — collecting data.', decide: `Decides in about ${est.human} at this volume.` },
     })
-    setWiz({ open: false })
     bump()
     go('experimentdetail', id)
-    toast('Multi-variant test launched — collecting data.')
+    toast('Test launched — collecting data.')
   }
 
-  const launch = (r: WizResult) => {
-    const p = PAGES.find((x) => x.id === r.pageId)
-    const est = estDecision(p, r.goalMult)
-    const id = 'e-new-' + Math.random().toString(36).slice(2, 6)
-    EXPERIMENTS.unshift({
-      id, name: r.name, pageId: r.pageId, group: p?.group ?? 'Other', status: 'running', verdict: 'pending', goal: r.goalLabel, days: 0, estDays: est.days,
-      templateId: r.templateId, templateName: r.templateName, dashboard: r.dashboard,
-      control: { v: 0, leads: 0, spend: 0 }, variant: { v: 0, leads: 0, spend: 0 }, corr: [],
-      narrative: { hyp: r.change || '—', going: 'Just launched — collecting data.', decide: `Decides in about ${est.human} at this volume.` },
-    })
-    setWiz({ open: false })
-    bump()
-    go('experimentdetail', id)
-    toast(`Test launched — decides in ~${est.human}.`)
-  }
+  // the single entry into the one creation flow (the builder). Optionally seeds a page as Variant A.
+  const newExperiment = (pageId?: string) => { setSeedPage(pageId); go('sandbox', 'new') }
+
   const declare = (id: string, win: 'A' | 'B', reason: string) => {
     const e = expById(id)
     if (!e) return
     e.status = 'ended'
     e.verdict = win === 'B' ? 'best' : 'low'
-    e.decision = { by: 'Akshay R', date: todayStr(), reason, learned: 'Recorded when the winner was declared.' }
+    e.decision = { by: 'Akshay R', date: todayStr(), reason, learned: 'Recorded when the winner was declared.', win }
     setDeclareId(null)
     bump()
     go('experimentdetail', id)
@@ -118,19 +109,8 @@ export function ExperimentsProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Ctx.Provider value={{ rev, openWizard: (page) => setWiz({ open: true, page }), openDeclare: setDeclareId, openStop: setStopId, templates, getTemplate, saveTemplate, duplicateTemplate, launchFromTemplate }}>
+    <Ctx.Provider value={{ rev, newExperiment, openDeclare: setDeclareId, openStop: setStopId, templates, getTemplate, saveTemplate, duplicateTemplate, launchFromTemplate }}>
       {children}
-      <Wizard
-        open={wiz.open}
-        initialPage={wiz.page}
-        onClose={() => setWiz({ open: false })}
-        onLaunch={launch}
-        templates={templates}
-        onLaunchTemplate={launchFromTemplate}
-        onEditTemplate={(t) => { setWiz({ open: false }); go('sandbox', t.id) }}
-        onDuplicateTemplate={duplicateTemplate}
-        onNewTemplate={() => { setWiz({ open: false }); go('sandbox', 'new') }}
-      />
       <DeclareDialog exp={declareId ? expById(declareId) : undefined} onClose={() => setDeclareId(null)} onConfirm={declare} />
       <StopDialog exp={stopId ? expById(stopId) : undefined} onClose={() => setStopId(null)} onConfirm={stop} />
     </Ctx.Provider>

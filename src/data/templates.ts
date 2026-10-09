@@ -15,6 +15,8 @@ export const PAGE_ELEMENTS: PageElement[] = [
   { k: 'call', label: 'Call now', kind: 'link' },
 ]
 export const elLabel = (k: string) => PAGE_ELEMENTS.find((e) => e.k === k)?.label ?? k
+/** reverse of elLabel — find the element key for a button label (for data that only stored the label) */
+export const elKeyOf = (label: string): string | undefined => PAGE_ELEMENTS.find((e) => e.label === label)?.k
 /** how rare each element is vs a raw enquiry — drives the decision-time estimate */
 export const EL_MULT: Record<string, number> = { apply: 1, form: 0.8, callback: 2, prospectus: 1.6, whatsapp: 2.5, call: 2.2 }
 

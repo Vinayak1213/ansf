@@ -357,6 +357,7 @@ export function ExpBehaviorView({ e }: { e: Experiment }) {
   if (isNVar(e)) return <NVariantBehavior e={e} />
   const d = expBehavior(e)
   const page = expPage(e)
+  if (d.collecting) return <ExpBehaviorCollecting e={e} page={page} vpage={PAGES.find((p) => p.id === e.variantPageId)} />
   return (
     <div className="space-y-5">
       <ExpHeadline d={d} />
@@ -418,7 +419,7 @@ function NVariantBehavior({ e }: { e: Experiment }) {
           <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-navy-tint text-navy"><Activity className="h-[18px] w-[18px]" /></span>
           <div>
             <div className="text-[14px] font-semibold text-fg">Behaviour — {variants.length} versions compared</div>
-            <div className="text-[12px] text-fg-subtle">Volumes are this test's own sessions per version, so they tie to the Result tab; the on-page shape — scroll, journey, friction, replays — comes from each version's page. Open any version for its full interaction map &amp; every recording.</div>
+            <div className="text-[12px] text-fg-subtle">Volumes are this test's own sessions per version, so they tie to the Result tab; the on-page shape — scroll, journey, friction, replays — comes from each version's page. The <b className="text-fg-muted">Lifetime</b> links open a page's all-time behaviour, kept separate from this test.</div>
           </div>
         </div>
       </Card>
@@ -432,11 +433,11 @@ function NVariantBehavior({ e }: { e: Experiment }) {
                 <i className="h-2 w-2 shrink-0 rounded-full" style={{ background: color(i) }} />
                 <b className="text-[12.5px] font-medium text-fg">Version {v.letter}</b>
                 <span className="flex-1 truncate text-[12px] text-fg-subtle">{page.name}</span>
-                <button onClick={() => open(v.pageId)} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-line px-2 py-1 text-[11.5px] font-medium text-navy transition-colors hover:border-navy/40 hover:bg-navy-tint/40">Open page <ArrowUpRight className="h-3 w-3" /></button>
+                <button onClick={() => open(v.pageId)} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-line px-2 py-1 text-[11.5px] font-medium text-navy transition-colors hover:border-navy/40 hover:bg-navy-tint/40">Lifetime behaviour <ArrowUpRight className="h-3 w-3" /></button>
               </div>
             ))}
           </div>
-          <p className="mt-2.5 border-t border-line pt-2.5 text-[11px] text-fg-subtle">This test hasn't collected sessions yet, so the A-vs-B-vs-C scroll, journey and replay comparisons are empty. Each version's page already has live behaviour — open any to see it now.</p>
+          <p className="mt-2.5 border-t border-line pt-2.5 text-[11px] text-fg-subtle">This test hasn't collected sessions yet, so the A-vs-B-vs-C comparison below is empty. The links above open each page's <b className="text-fg-muted">all-time</b> behaviour — all traffic to the page, not just this test.</p>
         </Card>
       ) : (
         <>
@@ -465,14 +466,14 @@ function NVariantBehavior({ e }: { e: Experiment }) {
                         <td className="px-2 py-2.5 text-right tnum text-fg">{fmtSec(a.activeSec)}</td>
                         <td className="px-2 py-2.5 text-right tnum"><span className={a.formReachPct >= 55 ? 'text-pos' : 'text-warn'}>{a.formReachPct}%</span></td>
                         <td className="px-2 py-2.5 text-right tnum"><span className={a.score >= 60 ? 'text-neg' : a.score >= 35 ? 'text-warn' : 'text-pos'}>{a.score}</span></td>
-                        <td className="px-2 py-2.5 text-right"><button onClick={() => open(r.v.pageId)} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-line px-2 py-1 text-[11.5px] font-medium text-navy transition-colors hover:border-navy/40 hover:bg-navy-tint/40">Open <ArrowUpRight className="h-3 w-3" /></button></td>
+                        <td className="px-2 py-2.5 text-right"><button onClick={() => open(r.v.pageId)} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-line px-2 py-1 text-[11.5px] font-medium text-navy transition-colors hover:border-navy/40 hover:bg-navy-tint/40">Lifetime <ArrowUpRight className="h-3 w-3" /></button></td>
                       </tr>
                     )
                   })}
                 </tbody>
               </table>
             </div>
-            <p className="mt-2.5 border-t border-line pt-2.5 text-[11px] leading-relaxed text-fg-subtle">Sessions are this test's slice of each page (they match the Result tab); active time, reach-form and friction are the page's measured shape. <b className="text-fg-muted">Open</b> a version for its full page behaviour — heatmap &amp; every recording.</p>
+            <p className="mt-2.5 border-t border-line pt-2.5 text-[11px] leading-relaxed text-fg-subtle">Sessions are this test's slice of each page (they match the Result tab); active time, reach-form and friction are the page's measured shape. <b className="text-fg-muted">Lifetime</b> opens that page's all-time behaviour — heatmap &amp; every recording, all traffic (not just this test).</p>
           </Card>
 
           {/* scroll depth A vs B vs C */}
@@ -609,6 +610,42 @@ function NVarReplay({ rows }: { rows: NVarRow[] }) {
   )
 }
 
+/* collecting A/B: no sessions captured yet — show an honest empty state, and offer each page's
+   LIFETIME behaviour separately so it's never confused with this test's (empty) results. */
+function ExpBehaviorCollecting({ e, page, vpage }: { e: Experiment; page?: Page; vpage?: Page }) {
+  const { go } = useNav()
+  const open = (pageId: string) => { openBehavior(pageId); go('pagedetail', pageId) }
+  const rows: [string, Page][] = ([['A', page], ['B', vpage]] as [string, Page | undefined][]).filter((r): r is [string, Page] => !!r[1])
+  return (
+    <div className="space-y-5">
+      <Card className="p-4">
+        <div className="flex items-center gap-2.5">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-navy-tint text-navy"><Activity className="h-[18px] w-[18px]" /></span>
+          <div>
+            <div className="text-[14px] font-semibold text-fg">No behaviour captured yet</div>
+            <div className="text-[12px] text-fg-subtle">This tab fills in with sessions recorded <b className="text-fg-muted">since the test started</b> (day {e.days}). It's live and splitting traffic evenly — check back once each version has sessions.</div>
+          </div>
+        </div>
+      </Card>
+      {rows.length > 0 && (
+        <Card className="p-4">
+          <SectionHead title="Each page's lifetime behaviour" hint="all traffic to the page — not this test" />
+          <div className="divide-y divide-line">
+            {rows.map(([letter, pg]) => (
+              <div key={letter} className="flex items-center gap-2 py-2.5">
+                <b className="text-[12.5px] font-medium text-fg">Version {letter}</b>
+                <span className="flex-1 truncate text-[12px] text-fg-subtle">{pg.name}</span>
+                <button onClick={() => open(pg.id)} className="inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-line px-2 py-1 text-[11.5px] font-medium text-navy transition-colors hover:border-navy/40 hover:bg-navy-tint/40">Lifetime behaviour <ArrowUpRight className="h-3 w-3" /></button>
+              </div>
+            ))}
+          </div>
+          <p className="mt-2.5 border-t border-line pt-2.5 text-[11px] text-fg-subtle">These are each page's all-time numbers, shown separately so they're never mistaken for this test's results.</p>
+        </Card>
+      )}
+    </div>
+  )
+}
+
 function ExpHeadline({ d }: { d: ExpBehaviorData }) {
   const good = d.dir > 0
   const tone = d.dir === 0 ? 'navy' : good ? 'pos' : 'neg'
@@ -620,12 +657,12 @@ function ExpHeadline({ d }: { d: ExpBehaviorData }) {
           <span className={cn('grid h-9 w-9 shrink-0 place-items-center rounded-[10px]', cls)}><Activity className="h-[18px] w-[18px]" /></span>
           <div>
             <div className="flex items-center gap-2 text-[14px] font-semibold text-fg">{d.headline}{d.sig && <span className="rounded bg-pos-tint px-1.5 py-0.5 text-[10px] font-bold text-pos">SIGNIFICANT</span>}</div>
-            <div className="text-[12px] text-fg-subtle">Behavioural read on <b className="text-fg-muted">{d.primary.label}</b> — the leading indicator behind the cost per lead.</div>
+            <div className="text-[12px] text-fg-subtle">Behavioural read on <b className="text-fg-muted">{d.primary.label}</b> — this test's own sessions since it started.</div>
           </div>
         </div>
         <div className="flex items-center gap-5 text-right">
           <div><div className="tnum text-[15px] font-bold text-fg">{num(d.sessions.c)} / {num(d.sessions.v)}</div><div className="text-[10.5px] text-fg-subtle">sessions A / B</div></div>
-          <div><div className="tnum text-[15px] font-bold text-fg">{d.days}d</div><div className="text-[10.5px] text-fg-subtle">running</div></div>
+          <div><div className="tnum text-[15px] font-bold text-fg">{d.days}d</div><div className="text-[10.5px] text-fg-subtle">since launch</div></div>
         </div>
       </div>
     </Card>

@@ -117,6 +117,7 @@ export function StepTrack({ t, update, addVariant, removeVariant, setVariantLett
                     variables={t.variables}
                     placement={t.placement[activeVariant.pageId] ?? {}}
                     onAssign={(el, varId) => assign(activeVariant.pageId, el, varId)}
+                    page={PAGES.find((p) => p.id === activeVariant.pageId)}
                     caption={`pages.onlinejain.com${PAGES.find((p) => p.id === activeVariant.pageId)?.path ?? ''} · Version ${activeVariant.letter}`}
                   />
                 </>

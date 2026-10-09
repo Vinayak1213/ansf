@@ -370,7 +370,7 @@ function FrictionHotspots() {
 
 function TestsInFlight() {
   const { go } = useNav()
-  const live = EXPERIMENTS.filter((e) => e.status === 'running' || e.status === 'limited')
+  const live = EXPERIMENTS.filter((e) => e.status === 'running')
   if (live.length === 0) return null
   const shown = live.slice(0, 4)
   const more = live.length - shown.length

@@ -18,7 +18,6 @@ const badgeTone: Record<string, string> = {
 function StatusChip({ status }: { status: string }) {
   const map: Record<string, { cls: string; label: string; live?: boolean }> = {
     running: { cls: 'bg-navy-tint text-navy', label: 'Running', live: true },
-    limited: { cls: 'bg-warn-tint text-warn', label: 'Test-limited' },
     ended: { cls: 'bg-pos-tint text-pos', label: 'Ended' },
     stopped: { cls: 'bg-sunken text-fg-muted', label: 'Stopped' },
     draft: { cls: 'bg-sunken text-fg-muted', label: 'Draft' },
@@ -34,12 +33,12 @@ function StatusChip({ status }: { status: string }) {
 
 export function Experiments() {
   const { go } = useNav()
-  const { openWizard, openDeclare, openStop } = useExp()
+  const { newExperiment, openDeclare, openStop } = useExp()
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
 
   const segs = [
-    { k: 'all', l: 'All' }, { k: 'running', l: 'Running' }, { k: 'ended', l: 'Ended' }, { k: 'limited', l: 'Test-limited' }, { k: 'stopped', l: 'Stopped' },
+    { k: 'all', l: 'All' }, { k: 'running', l: 'Running' }, { k: 'ended', l: 'Ended' }, { k: 'stopped', l: 'Stopped' },
   ]
   const count = (k: string) => (k === 'all' ? EXPERIMENTS.length : EXPERIMENTS.filter((e) => e.status === k).length)
   const list = EXPERIMENTS.filter((e) => {
@@ -58,7 +57,7 @@ export function Experiments() {
           <h1 className="text-[22px] font-semibold tracking-tight text-fg">Experiments</h1>
           <p className="mt-0.5 text-[13px] text-fg-subtle">What you're testing, what won — start every test from a proven template or from scratch.</p>
         </div>
-        <Button variant="primary" size="md" onClick={() => openWizard()}><Plus className="h-3.5 w-3.5" /> New experiment</Button>
+        <Button variant="primary" size="md" onClick={() => newExperiment()}><Plus className="h-3.5 w-3.5" /> New experiment</Button>
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -143,7 +142,7 @@ export function Experiments() {
 }
 
 function RowMenu({ status, declarable = true, onDeclare, onStop, onOpenPage }: { status: string; declarable?: boolean; onDeclare: () => void; onStop: () => void; onOpenPage: () => void }) {
-  const canAct = status === 'running' || status === 'limited'
+  const canAct = status === 'running'
   return (
     <DropdownMenu.Root>
       <DropdownMenu.Trigger asChild>
