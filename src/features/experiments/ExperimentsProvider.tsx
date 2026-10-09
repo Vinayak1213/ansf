@@ -11,7 +11,6 @@ import { EXPERIMENTS, PAGES, ecpl, type Experiment } from '@/data/samurai'
 import { estDecision, expById } from '@/data/experiments'
 import { TEMPLATES, elLabel, type ExperimentTemplate } from '@/data/templates'
 
-type ExpTab = 'tests' | 'templates'
 const Ctx = createContext<{
   rev: number
   openWizard: (pageId?: string) => void
@@ -20,12 +19,11 @@ const Ctx = createContext<{
   templates: ExperimentTemplate[]
   getTemplate: (id: string) => ExperimentTemplate | undefined
   saveTemplate: (t: ExperimentTemplate) => void
+  duplicateTemplate: (t: ExperimentTemplate) => void
   launchFromTemplate: (t: ExperimentTemplate) => void
-  expTab: ExpTab
-  setExpTab: (t: ExpTab) => void
 }>({
   rev: 0, openWizard: () => {}, openDeclare: () => {}, openStop: () => {},
-  templates: [], getTemplate: () => undefined, saveTemplate: () => {}, launchFromTemplate: () => {}, expTab: 'tests', setExpTab: () => {},
+  templates: [], getTemplate: () => undefined, saveTemplate: () => {}, duplicateTemplate: () => {}, launchFromTemplate: () => {},
 })
 export const useExp = () => useContext(Ctx)
 
@@ -39,7 +37,6 @@ export function ExperimentsProvider({ children }: { children: ReactNode }) {
   const [declareId, setDeclareId] = useState<string | null>(null)
   const [stopId, setStopId] = useState<string | null>(null)
   const [templates, setTemplates] = useState<ExperimentTemplate[]>(TEMPLATES)
-  const [expTab, setExpTab] = useState<ExpTab>('tests')
 
   const getTemplate = (id: string) => templates.find((t) => t.id === id)
   const saveTemplate = (t: ExperimentTemplate) => {
@@ -48,9 +45,13 @@ export function ExperimentsProvider({ children }: { children: ReactNode }) {
       if (i >= 0) { const c = [...ts]; c[i] = t; return c }
       return [{ ...t, id: 'tpl' + Math.random().toString(36).slice(2, 6) }, ...ts]
     })
-    setExpTab('templates')
     go('experiments')
     toast(`Template saved — "${t.name || 'Untitled template'}".`)
+  }
+  // duplicate without navigating — used from the New-experiment Start step so the copy appears in place
+  const duplicateTemplate = (t: ExperimentTemplate) => {
+    setTemplates((ts) => [{ ...structuredClone(t), id: 'tpl' + Math.random().toString(36).slice(2, 6), name: t.name + ' (copy)', usedBy: 0 }, ...ts])
+    toast('Template duplicated.')
   }
   // launch an N-variant test directly from a template (it already carries the variant pages, variables & placement)
   const launchFromTemplate = (t: ExperimentTemplate) => {
@@ -75,7 +76,7 @@ export function ExperimentsProvider({ children }: { children: ReactNode }) {
       variants, variables,
       narrative: { hyp: t.change || '—', going: 'Just launched — collecting data.', decide: `Decides in about ${est.human} at this volume.` },
     })
-    setExpTab('tests')
+    setWiz({ open: false })
     bump()
     go('experimentdetail', id)
     toast('Multi-variant test launched — collecting data.')
@@ -117,9 +118,19 @@ export function ExperimentsProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Ctx.Provider value={{ rev, openWizard: (page) => setWiz({ open: true, page }), openDeclare: setDeclareId, openStop: setStopId, templates, getTemplate, saveTemplate, launchFromTemplate, expTab, setExpTab }}>
+    <Ctx.Provider value={{ rev, openWizard: (page) => setWiz({ open: true, page }), openDeclare: setDeclareId, openStop: setStopId, templates, getTemplate, saveTemplate, duplicateTemplate, launchFromTemplate }}>
       {children}
-      <Wizard open={wiz.open} initialPage={wiz.page} onClose={() => setWiz({ open: false })} onLaunch={launch} />
+      <Wizard
+        open={wiz.open}
+        initialPage={wiz.page}
+        onClose={() => setWiz({ open: false })}
+        onLaunch={launch}
+        templates={templates}
+        onLaunchTemplate={launchFromTemplate}
+        onEditTemplate={(t) => { setWiz({ open: false }); go('sandbox', t.id) }}
+        onDuplicateTemplate={duplicateTemplate}
+        onNewTemplate={() => { setWiz({ open: false }); go('sandbox', 'new') }}
+      />
       <DeclareDialog exp={declareId ? expById(declareId) : undefined} onClose={() => setDeclareId(null)} onConfirm={declare} />
       <StopDialog exp={stopId ? expById(stopId) : undefined} onClose={() => setStopId(null)} onConfirm={stop} />
     </Ctx.Provider>

@@ -41,7 +41,7 @@ export interface StepProps {
 
 export function TemplateBuilder({ id }: { id: string }) {
   const { go } = useNav()
-  const { getTemplate, saveTemplate, launchFromTemplate, setExpTab } = useExp()
+  const { getTemplate, saveTemplate, launchFromTemplate } = useExp()
   const [t, setT] = useState<ExperimentTemplate>(() => (id === 'new' ? blankTemplate() : structuredClone(getTemplate(id) ?? blankTemplate())))
   const [step, setStep] = useState(0)
   const [dir, setDir] = useState(1)
@@ -85,7 +85,7 @@ export function TemplateBuilder({ id }: { id: string }) {
   })
 
   const goStep = (next: number) => { setDir(next > step ? 1 : -1); setStep(Math.max(0, Math.min(STEPS.length - 1, next))) }
-  const exit = () => { setExpTab('templates'); go('experiments') }
+  const exit = () => { go('experiments') }
   const save = () => { saveTemplate(t) }
   const launch = () => { launchFromTemplate(t) }
 

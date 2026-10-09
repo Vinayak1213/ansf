@@ -3,7 +3,6 @@ import { MoreHorizontal, Plus } from 'lucide-react'
 import { useState } from 'react'
 import { useNav } from '@/lib/nav'
 import { useExp } from './experiments/ExperimentsProvider'
-import { TemplatesLibrary } from './experiments/Templates'
 import { Button } from '@/components/ui'
 import { NetIcon } from './Pages'
 import { cn, inr } from '@/lib/utils'
@@ -35,7 +34,7 @@ function StatusChip({ status }: { status: string }) {
 
 export function Experiments() {
   const { go } = useNav()
-  const { openWizard, openDeclare, openStop, expTab, setExpTab } = useExp()
+  const { openWizard, openDeclare, openStop } = useExp()
   const [q, setQ] = useState('')
   const [status, setStatus] = useState('all')
 
@@ -57,21 +56,10 @@ export function Experiments() {
       <div className="mb-4 flex items-end justify-between gap-4">
         <div>
           <h1 className="text-[22px] font-semibold tracking-tight text-fg">Experiments</h1>
-          <p className="mt-0.5 text-[13px] text-fg-subtle">What you're testing, what won, and the reusable templates behind them.</p>
+          <p className="mt-0.5 text-[13px] text-fg-subtle">What you're testing, what won — start every test from a proven template or from scratch.</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="inline-flex rounded-[10px] border border-line bg-sunken p-0.5">
-            {(['tests', 'templates'] as const).map((tb) => (
-              <button key={tb} onClick={() => setExpTab(tb)} className={cn('rounded-[8px] px-3.5 py-1.5 text-[12.5px] font-medium capitalize transition-colors', expTab === tb ? 'bg-panel text-fg shadow-sm' : 'text-fg-subtle hover:text-fg-muted')}>{tb}</button>
-            ))}
-          </div>
-          {expTab === 'tests'
-            ? <Button variant="primary" size="md" onClick={() => openWizard()}><Plus className="h-3.5 w-3.5" /> New experiment</Button>
-            : <Button variant="primary" size="md" onClick={() => go('sandbox', 'new')}><Plus className="h-3.5 w-3.5" /> New template</Button>}
-        </div>
+        <Button variant="primary" size="md" onClick={() => openWizard()}><Plus className="h-3.5 w-3.5" /> New experiment</Button>
       </div>
-
-      {expTab === 'templates' ? <TemplatesLibrary /> : <>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search experiments…" className="input max-w-[240px]" />
@@ -150,7 +138,6 @@ export function Experiments() {
           Cost per lead is per variant. Uplift stays blank until a winner is declared — a running test is not a result.
         </div>
       </div>
-      </>}
     </div>
   )
 }
