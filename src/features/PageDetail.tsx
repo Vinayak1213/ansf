@@ -14,6 +14,8 @@ import { NetIcon } from './Pages'
 import { cn, inr, num } from '@/lib/utils'
 import { PAGES, findPage, publishDraftPage, removeDraftPage, type Page } from '@/data/samurai'
 import { lifeState, pageAds, pageEndedTest, pageHealth, pageNet, pageRunningTest, pageWeekly } from '@/data/pages'
+import { campaignBiz, campaignsForPage, pageBiz } from '@/data/business'
+import { TicketRevenue } from '@/components/TicketRevenue'
 
 const avg = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length
 
@@ -165,6 +167,8 @@ export function PageDetail({ id }: { id: string }) {
         <p className="mt-3 text-[11.5px] text-fg-subtle">{Math.round(gap * 100)}% of clicks did not become visits — bounces before load, ad blockers, and direct traffic. Shown, not hidden.</p>
       </Card>
 
+      <TicketRevenue pageId={p.id} name={p.name} biz={pageBiz(p.id)} f={f} hint="enrolment revenue from this page" campaigns={campaignsForPage(p.id).map((c) => ({ name: c.name, biz: campaignBiz(c) }))} />
+
       <div className="mt-5">
         <SectionHead title="Cost per lead over time" hint="this page · weekly" right={<InvestigateLink onClick={trendDrill} />} />
         <Card className="p-5">
@@ -264,7 +268,7 @@ function HealthPanel({ id }: { id: string }) {
   const errs = p.fault === 'broken_form' ? 122 : p.fault === 'closed_intake' ? 0 : 3
   const tagOk = p.fault !== 'broken_form'
   const rows = [
-    { t: 'Conversion tag', d: 'Fires on a successful enquiry submission.', badge: <Badge tone={tagOk ? 'pos' : 'neg'}>{tagOk ? 'Firing correctly' : 'Script erroring'}</Badge> },
+    { t: 'Conversion tag', d: 'Fires when a lead is captured.', badge: <Badge tone={tagOk ? 'pos' : 'neg'}>{tagOk ? 'Firing correctly' : 'Script erroring'}</Badge> },
     { t: 'Script errors (30 days)', d: 'JavaScript errors caught on this page.', badge: <Badge tone={errs > 20 ? 'neg' : errs > 0 ? 'warn' : 'pos'}>{errs} error{Number(errs) === 1 ? '' : 's'}</Badge> },
     { t: 'Heatmaps & replay', d: 'Microsoft Clarity is connected on this page.', badge: <Badge tone="pos">On</Badge> },
   ]

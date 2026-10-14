@@ -12,7 +12,7 @@ export function expFunnel(e: Experiment): { ctrl: FunnelStage[]; var: FunnelStag
     return c ? c[arm] : null
   }
   const build = (vis: number, fs: number | null, ap: number | null, lead: number): FunnelStage[] =>
-    ([['Visitors', vis], ['Form started', fs], ['Apply-Now', ap], ['Enquiry', lead]] as [string, number | null][])
+    ([['Visitors', vis], ['Form started', fs], ['Apply-Now', ap], ['Lead', lead]] as [string, number | null][])
       .filter((s) => s[1] != null)
       .map(([name, value]) => ({ name, value: value as number, pct: Math.round(((value as number) / vis) * 100) }))
   return {

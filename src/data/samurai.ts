@@ -138,7 +138,8 @@ export const LEAKS: Leak[] = [
 ]
 
 export const CAMPAIGNS: Campaign[] = [
-  { id: 'c1', name: 'MBA · Search · Brand', net: 'google', pageId: 'mba', spend: 100669, clicks: 1240, leads: 45, cpl: cpl(100669, 45), good: 0.58 },
+  { id: 'c1a', name: 'MBA · Search · Brand', net: 'google', pageId: 'mba', spend: 62000, clicks: 764, leads: 28, cpl: cpl(62000, 28), good: 0.6 },
+  { id: 'c1b', name: 'MBA · Meta · Prospecting', net: 'meta', pageId: 'mba', spend: 38669, clicks: 476, leads: 17, cpl: cpl(38669, 17), good: 0.53 },
   { id: 'c2', name: 'BBA · Search', net: 'google', pageId: 'bba', spend: 106000, clicks: 1470, leads: 90, cpl: cpl(106000, 90), good: 0.55 },
   { id: 'c3', name: 'B.Com · Meta · Prospecting', net: 'meta', pageId: 'bcom', spend: 64300, clicks: 1980, leads: 0, cpl: null, good: 0 },
   { id: 'c4', name: 'MCA · Search', net: 'google', pageId: 'mca', spend: 72540, clicks: 900, leads: 31, cpl: cpl(72540, 31), good: 0.5 },
@@ -152,7 +153,7 @@ export const CAMPAIGNS: Campaign[] = [
 
 export const EXPERIMENTS: Experiment[] = [
   {
-    id: 'e-nvar', name: 'Programme page layout — A vs B vs C', pageId: 'mba', group: 'MBA', status: 'running', verdict: 'good', goal: 'Enquiry', days: 9,
+    id: 'e-nvar', name: 'Programme page layout — A vs B vs C', pageId: 'mba', group: 'MBA', status: 'running', verdict: 'good', goal: 'Lead', days: 9,
     templateName: 'Fold + fee nudge',
     control: { v: 320, leads: 18, spend: 42000 }, variant: { v: 330, leads: 24, spend: 42000 }, corr: [],
     variants: [
@@ -161,11 +162,11 @@ export const EXPERIMENTS: Experiment[] = [
       { letter: 'C', pageId: 'mca', name: 'Online MCA', v: 325, spend: 42000 },
     ],
     variables: [
-      { id: 'enquiry', name: 'Enquiry', isGoal: true, arms: { A: { button: 'Enquiry form', count: 18 }, B: { button: 'Enquiry form', count: 24 }, C: { button: 'Enquiry form', count: 20 } } },
+      { id: 'enquiry', name: 'Lead', isGoal: true, arms: { A: { button: 'Enquiry form', count: 18 }, B: { button: 'Enquiry form', count: 24 }, C: { button: 'Enquiry form', count: 20 } } },
       { id: 'primary', name: 'Primary action', arms: { A: { button: 'Apply Now', count: 58 }, B: { button: 'Request a callback', count: 66 }, C: { button: 'Apply Now', count: 61 } } },
       { id: 'brochure', name: 'Prospectus download', arms: { A: { button: 'Download prospectus', count: 22 }, B: { button: 'Download prospectus', count: 19 }, C: { button: 'Download prospectus', count: 15 } } },
     ],
-    narrative: { hyp: 'Compare three programme-page layouts on the same variables — Enquiry decides, the rest are tracked alongside.', going: 'Version B (BBA) is cheapest per enquiry so far; the primary action is a different button on each page.', decide: 'Reads once each variant clears the enquiry bar.' },
+    narrative: { hyp: 'Compare three programme-page layouts on the same variables — the Lead goal decides, the rest are tracked alongside.', going: 'Version B (BBA) is cheapest per lead so far; the primary action is a different button on each page.', decide: 'Reads once each variant clears the lead bar.' },
   },
   {
     id: 'e-mba', name: 'Mobile fold + fee nudge', pageId: 'mba', group: 'MBA', status: 'ended', verdict: 'best', goal: 'Apply-Now click', days: 12,

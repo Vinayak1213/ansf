@@ -126,7 +126,7 @@ export function Campaigns() {
               <tfoot><tr className="border-t border-line bg-surface/60 font-semibold text-fg"><td className="px-3 py-2.5">{list.length} campaigns</td><td className="px-3 py-2.5 text-right tnum">{inr(T.spend)}</td><td className="px-3 py-2.5 text-right tnum">{num(T.leads)}</td><td className="px-3 py-2.5 text-right tnum">{tcpl ? inr(tcpl) : '—'}</td><td className="px-3 py-2.5 text-right tnum">{T.leads ? Math.round(tgood * 100) + '%' : '—'}</td></tr></tfoot>
             </table>
           </div>
-          <div className="border-t border-line bg-surface/60 px-3 py-2.5 text-[11.5px] text-fg-subtle">"Spending, no leads" is the single most useful control here — a campaign buying clicks that never become enquiries.</div>
+          <div className="border-t border-line bg-surface/60 px-3 py-2.5 text-[11.5px] text-fg-subtle">"Spending, no leads" is the single most useful control here — a campaign buying clicks that never become leads.</div>
         </Card>
       </div>
     </div>

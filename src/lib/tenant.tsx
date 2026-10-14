@@ -8,7 +8,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
    cross-industry standard and stays constant. */
 
 export interface Lexicon {
-  conversion: { one: string; many: string } // what a lead is called: enquiry/enquiries, lead/leads
+  conversion: { one: string; many: string } // what a lead is called (lead/leads across industries)
   offering: { one: string; many: string }    // what they market: programme, product, collection, service, project
   goalNoun: string                            // the pacing goal concept: intake, quarterly target, sales target
   goalUnit: string                            // what's counted toward it: enrolments, sign-ups, orders, bookings
@@ -34,7 +34,7 @@ export const INDUSTRIES = ['B2B SaaS', 'E-commerce', 'Education', 'Fintech', 'He
 const LEX: Record<string, Lexicon> = {
   'B2B SaaS':    { conversion: { one: 'lead', many: 'leads' },        offering: { one: 'product', many: 'products' },       goalNoun: 'quarterly target', goalUnit: 'sign-ups',        period: 'Q1 2027' },
   'E-commerce':  { conversion: { one: 'lead', many: 'leads' },        offering: { one: 'collection', many: 'collections' }, goalNoun: 'sales target',     goalUnit: 'orders',          period: 'Q1 2027' },
-  'Education':   { conversion: { one: 'enquiry', many: 'enquiries' }, offering: { one: 'programme', many: 'programmes' },   goalNoun: 'intake',           goalUnit: 'enrolments',      period: 'January 2027' },
+  'Education':   { conversion: { one: 'lead', many: 'leads' },        offering: { one: 'programme', many: 'programmes' },   goalNoun: 'intake',           goalUnit: 'enrolments',      period: 'January 2027' },
   'Fintech':     { conversion: { one: 'lead', many: 'leads' },        offering: { one: 'product', many: 'products' },       goalNoun: 'quarterly target', goalUnit: 'approved accounts', period: 'Q1 2027' },
   'Healthcare':  { conversion: { one: 'lead', many: 'leads' },        offering: { one: 'service', many: 'services' },       goalNoun: 'quarterly target', goalUnit: 'appointments',    period: 'this quarter' },
   'Real Estate': { conversion: { one: 'lead', many: 'leads' },        offering: { one: 'project', many: 'projects' },       goalNoun: 'sales target',     goalUnit: 'bookings',        period: 'this quarter' },

@@ -60,7 +60,7 @@ export function InvestigateProvider({ children }: { children: ReactNode }) {
                     {payload.definition && (
                       <p className="mb-4 rounded-[10px] border border-line bg-sunken px-3.5 py-2.5 text-[12.5px] leading-relaxed text-fg-muted">{payload.definition}</p>
                     )}
-                    <div className="overflow-hidden rounded-[10px] border border-line">
+                    <div className="overflow-x-auto rounded-[10px] border border-line">
                       <table className="w-full text-[12.5px]">
                         <thead>
                           <tr className="border-b border-line bg-surface/60 text-fg-subtle">

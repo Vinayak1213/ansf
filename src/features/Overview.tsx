@@ -8,6 +8,7 @@ import { useNav } from '@/lib/nav'
 import { useInvestigate } from '@/components/Investigate'
 import { cn, inr, num } from '@/lib/utils'
 import { ACCOUNT, EXPERIMENTS, LEAKS, PAGES, QUARTER, VERDICT, cplTrend, ecpl, goalVarOf, isNVar, leakTotal, pageName, variantCpl } from '@/data/samurai'
+import { accountBiz, money, pageBiz, ticketSize } from '@/data/business'
 import { expPage, readinessPct } from '@/data/experiments'
 import { pageNet } from '@/data/pages'
 import { NetIcon } from '@/features/Pages'
@@ -53,7 +54,7 @@ export function Overview() {
   const leakDrill = () =>
     investigate({
       title: 'Where the money leaked',
-      definition: `${inr(leakTotal())} — 23% of spend — reached pages that produced no enquiry. Confirmed leaks are provably broken; likely leaks are spend past one CPL with no return.`,
+      definition: `${inr(leakTotal())} — 23% of spend — reached pages that produced no leads. Confirmed leaks are provably broken; likely leaks are spend past one CPL with no return.`,
       columns: [
         { key: 'p', label: 'Page' },
         { key: 'sev', label: 'Severity' },
@@ -111,6 +112,11 @@ export function Overview() {
           <StatTile icon={Wallet} label="Spend" value={ACCOUNT.spend * f} kind="inr" series={spendSeries} tone="navy" sub={label} />
           <StatTile icon={Users} label="Leads" value={ACCOUNT.leads * f} kind="num" series={leadSeries} tone="pos" delta={9} sub={label} />
           <StatTile icon={TrendingUp} label="Blended CPL" value={ACCOUNT.cpl} kind="inr" series={cplSeries} tone="navy" delta={ACCOUNT.cplDeltaPct} invert sub="vs last quarter" />
+        </motion.div>
+
+        {/* What the spend returned — the business / revenue layer */}
+        <motion.div variants={rise}>
+          <RevenueCard f={f} label={label} />
         </motion.div>
 
         {/* Tests in flight */}
@@ -327,6 +333,79 @@ function NextStep({ n, title, detail }: { n: number; title: string; detail: stri
         <div className="text-[11.5px] leading-snug text-fg-subtle">{detail}</div>
       </div>
     </div>
+  )
+}
+
+/* The business / revenue layer — what the ad spend actually returned. Scoped to PAID spend
+   (distinct from the January intake goal, which counts all admissions) so the two never clash.
+   All figures from the canonical, reconciling business model. Deterministic, no AI. */
+function RevenueCard({ f, label }: { f: number; label: string }) {
+  const investigate = useInvestigate()
+  const b = accountBiz()
+  const spend = Math.round(b.spend * f)
+  const revenue = Math.round(b.revenue * f)
+  const enrolled = Math.round(b.enrolled * f)
+  const spendPct = Math.max(5, Math.round((spend / revenue) * 100))
+
+  const revenueDrill = () =>
+    investigate({
+      title: 'What your ad spend returned — by programme',
+      definition: 'Cost vs revenue by programme: what you spent, what came back, the average ticket, the cost to win one enrolment (CAC) and the return. A higher CAC is worth it when the ticket is bigger. Avg ticket is the per-programme average — individual enrolments sync from your AMS. 34% close-rate; reconciles to the account total.',
+      columns: [
+        { key: 'prog', label: 'Programme' },
+        { key: 's', label: 'Spend', align: 'right' },
+        { key: 'rev', label: 'Revenue', align: 'right' },
+        { key: 't', label: 'Avg ticket', align: 'right' },
+        { key: 'cac', label: 'CAC', align: 'right' },
+        { key: 'roas', label: 'Return', align: 'right' },
+      ],
+      rows: [...PAGES]
+        .map((p) => ({ p, pb: pageBiz(p.id) }))
+        .sort((a, z) => z.pb.revenue - a.pb.revenue)
+        .map(({ p, pb }) => ({
+          prog: p.name,
+          s: inr(Math.round(pb.spend * f)),
+          rev: pb.enrolled ? money(Math.round(pb.revenue * f)) : '—',
+          t: pb.enrolled ? money(ticketSize(p.id)) : '—',
+          cac: pb.cac ? inr(pb.cac) : '—',
+          roas: pb.enrolled ? `${pb.roas}×` : '—',
+        })),
+      foot: { prog: 'All programmes', s: inr(spend), rev: money(revenue), t: `avg ${money(b.avgTicket ?? 0)}`, cac: b.cac ? inr(b.cac) : '—', roas: `${b.roas}×` },
+      note: 'Programmes with 0 enrolments still spent — that spend sits in the total but brought no revenue (the confirmed leaks). Open a page or campaign to drill into its cost vs revenue.',
+    })
+
+  return (
+    <Card className="p-5">
+      <SectionHead title="What your ad spend returned" hint={`enrolment revenue · ${label}`} right={<InvestigateLink onClick={revenueDrill} />} />
+      <p className="text-[13.5px] leading-relaxed text-fg-muted">
+        Your <b className="tnum text-fg">{money(spend)}</b> of ad spend turned into <b className="tnum text-pos">{money(revenue)}</b> of enrolment revenue.
+      </p>
+
+      {/* spent → returned, to scale */}
+      <div className="mt-3.5 space-y-2">
+        <div className="flex items-center gap-2.5">
+          <span className="w-[68px] shrink-0 text-[11px] text-fg-subtle">Spent</span>
+          <div className="h-3 flex-1 overflow-hidden rounded-full bg-sunken"><motion.i className="block h-full rounded-full bg-navy" initial={{ width: 0 }} animate={{ width: `${spendPct}%` }} transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }} /></div>
+          <span className="tnum w-14 shrink-0 text-right text-[12.5px] font-semibold text-fg">{money(spend)}</span>
+        </div>
+        <div className="flex items-center gap-2.5">
+          <span className="w-[68px] shrink-0 text-[11px] text-fg-subtle">Returned</span>
+          <div className="h-3 flex-1 overflow-hidden rounded-full bg-sunken"><motion.i className="block h-full rounded-full bg-pos" initial={{ width: 0 }} animate={{ width: '100%' }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }} /></div>
+          <span className="tnum w-14 shrink-0 text-right text-[12.5px] font-semibold text-pos">{money(revenue)}</span>
+        </div>
+      </div>
+
+      {/* the payoff — plain labels, no jargon */}
+      <div className="mt-4 grid grid-cols-3 gap-3 border-t border-line pt-4 text-center">
+        <div><div className="tnum text-[21px] font-bold text-pos">{b.roas}×</div><div className="mt-0.5 text-[11px] leading-tight text-fg-subtle">back on every ₹1 spent</div></div>
+        <div><div className="tnum text-[21px] font-bold text-fg">{b.cac ? inr(b.cac) : '—'}</div><div className="mt-0.5 text-[11px] leading-tight text-fg-subtle">to win one enrolment</div></div>
+        <div><div className="tnum text-[21px] font-bold text-fg">{money(b.avgTicket ?? 0)}</div><div className="mt-0.5 text-[11px] leading-tight text-fg-subtle">average ticket brought</div></div>
+      </div>
+
+      <p className="mt-3 text-[11px] leading-relaxed text-fg-subtle">
+        {num(enrolled)} enrolments × their ticket size (varies by programme — avg {money(b.avgTicket ?? 0)}), at a 34% close-rate on qualified leads. Counts only what ad spend drove — the January intake target above tracks all admissions.
+      </p>
+    </Card>
   )
 }
 

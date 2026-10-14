@@ -25,7 +25,7 @@ export interface Variable { id: string; name: string; isGoal?: boolean }
 export const makeVarId = () => 'v' + Math.random().toString(36).slice(2, 6)
 export const goalVariable = (vs: Variable[]): Variable | undefined => vs.find((v) => v.isGoal) ?? vs[0]
 export const defaultVariables = (): Variable[] => [
-  { id: 'enquiry', name: 'Enquiry', isGoal: true },
+  { id: 'enquiry', name: 'Lead', isGoal: true },
   { id: 'primary', name: 'Primary action' },
 ]
 
@@ -76,7 +76,7 @@ export const TEMPLATES: ExperimentTemplate[] = [
   {
     id: 't-fold', name: 'Fold + fee nudge', description: 'Our proven winner — move the form above the fold and answer cost before the ask.',
     change: 'Fold layout + fee/scholarship nudge', suggestedFor: ['MBA', 'MCA', 'BBA'],
-    variables: [{ id: 'enquiry', name: 'Enquiry', isGoal: true }, { id: 'primary', name: 'Primary action' }, { id: 'brochure', name: 'Prospectus download' }],
+    variables: [{ id: 'enquiry', name: 'Lead', isGoal: true }, { id: 'primary', name: 'Primary action' }, { id: 'brochure', name: 'Prospectus download' }],
     variants: [{ pageId: 'mba', letter: 'A' }, { pageId: 'bba', letter: 'B' }],
     placement: {
       mba: { enquiry: 'form', primary: 'apply', brochure: 'prospectus' },
@@ -99,7 +99,7 @@ export const TEMPLATES: ExperimentTemplate[] = [
   {
     id: 't-form', name: 'Shorter enquiry form', description: 'Ask name and phone first, email last — fewer mid-form drop-offs.',
     change: 'Reordered, shorter enquiry form', suggestedFor: ['any programme'],
-    variables: [{ id: 'enquiry', name: 'Enquiry', isGoal: true }],
+    variables: [{ id: 'enquiry', name: 'Lead', isGoal: true }],
     variants: [{ pageId: 'mca', letter: 'A' }, { pageId: 'bca', letter: 'B' }],
     placement: { mca: { enquiry: 'form' }, bca: { enquiry: 'form' } },
     dashboard: ['verdict', 'goal'],

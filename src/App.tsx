@@ -7,6 +7,9 @@ import { InvestigateProvider } from '@/components/Investigate'
 import { ToastProvider } from '@/components/Toast'
 import { Sidebar, Topbar, type Screen } from '@/components/Shell'
 import { Overview } from '@/features/Overview'
+import { Decisions } from '@/features/Decisions'
+import { EnrollmentStudio } from '@/features/EnrollmentStudio'
+import { SmartAlerts } from '@/features/SmartAlerts'
 import { Pages } from '@/features/Pages'
 import { PageDetail } from '@/features/PageDetail'
 import { Experiments } from '@/features/Experiments'
@@ -39,6 +42,9 @@ function AppInner() {
         <Topbar collapsed={collapsed} onToggleCollapse={toggleCollapse} />
         <main className="flex-1" key={route.name + (route.param ?? '')}>
           {route.name === 'overview' && <Overview />}
+          {route.name === 'alerts' && <SmartAlerts />}
+          {route.name === 'studio' && <EnrollmentStudio />}
+          {route.name === 'decisions' && <Decisions />}
           {route.name === 'pages' && <Pages />}
           {route.name === 'pagedetail' && <PageDetail id={route.param!} />}
           {route.name === 'ai' && <SamuraiAI />}

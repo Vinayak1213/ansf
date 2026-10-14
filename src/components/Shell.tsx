@@ -1,17 +1,19 @@
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { AnimatePresence, motion } from 'motion/react'
-import { Check, ChevronsUpDown, FlaskConical, LayoutDashboard, Megaphone, PanelLeft, ChevronLeft, Plus, ScrollText, Search, Settings, Sparkles } from 'lucide-react'
+import { BellRing, Check, ChevronsUpDown, FlaskConical, LayoutDashboard, Megaphone, PanelLeft, ChevronLeft, Plus, ScrollText, Search, Settings, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { useNav } from '@/lib/nav'
 import { useTenant } from '@/lib/tenant'
 import { CAMPAIGNS, EXPERIMENTS, PAGES } from '@/data/samurai'
+import { criticalCount } from '@/data/alerts'
 import { Kbd } from './ui'
 
-export type Screen = 'overview' | 'pages' | 'experiments' | 'campaigns' | 'ai' | 'settings'
+export type Screen = 'overview' | 'alerts' | 'studio' | 'decisions' | 'pages' | 'experiments' | 'campaigns' | 'ai' | 'settings'
 
 // Counts read from the seed data so the sidebar always reconciles with each section's list.
 const NAV: { id: Screen; label: string; icon: typeof LayoutDashboard; count?: number }[] = [
   { id: 'overview', label: 'Overview', icon: LayoutDashboard },
+  { id: 'alerts', label: 'Alerts', icon: BellRing, count: criticalCount() },
   { id: 'pages', label: 'Pages', icon: ScrollText, count: PAGES.length },
   { id: 'experiments', label: 'Experiments', icon: FlaskConical, count: EXPERIMENTS.length },
   { id: 'campaigns', label: 'Campaigns', icon: Megaphone, count: CAMPAIGNS.length },

@@ -400,7 +400,7 @@ export function CutList() {
           <div className="flex-1">
             <div className="text-[13px] font-medium text-fg">{c.name}</div>
             <div className="text-[11.5px] text-fg-subtle tnum">
-              {inr(c.spend)} spent · {num(c.clicks)} clicks · no enquiries
+              {inr(c.spend)} spent · {num(c.clicks)} clicks · no leads
             </div>
           </div>
           <span className="tnum text-[14px] font-bold text-fg">{inr(c.spend)}</span>

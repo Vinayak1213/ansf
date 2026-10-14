@@ -2,6 +2,9 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 
 export type RouteName =
   | 'overview'
+  | 'alerts'
+  | 'studio'
+  | 'decisions'
   | 'pages'
   | 'pagedetail'
   | 'experiments'

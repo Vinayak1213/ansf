@@ -10,6 +10,7 @@ import { motion } from 'motion/react'
 import { cn, inr, num } from '@/lib/utils'
 import { EXPERIMENTS, PAGES, VERDICT, ecpl, goalVarOf, isNVar, variantCpl } from '@/data/samurai'
 import { expPage, expVariantPage } from '@/data/experiments'
+import { bizFromLeads, money, ticketSize } from '@/data/business'
 import { elKeyOf } from '@/data/templates'
 import { PageCanvas } from './experiments/PageCanvas'
 import { C } from '@/lib/tokens'
@@ -151,6 +152,9 @@ export function ExperimentDetail({ id }: { id: string }) {
         <p className="mt-4 text-[13.5px] leading-relaxed text-fg-muted">{summary}</p>
         {honesty && <p className="mt-2 text-[12px] italic leading-relaxed text-fg-subtle">{honesty}</p>}
       </Card>
+
+      {/* what it returned — projected revenue per version */}
+      <ExperimentReturn e={e} />
 
       {/* funnel */}
       <div className="mt-5">
@@ -301,6 +305,8 @@ function NVariantResult({ e }: { e: (typeof EXPERIMENTS)[number] }) {
         </Card>
       </div>
 
+      <ExperimentReturn e={e} />
+
       {!collecting && (
         <>
           <div className="mt-5">
@@ -400,6 +406,99 @@ function NVarPlacement({ e }: { e: (typeof EXPERIMENTS)[number] }) {
           ))}
         </div>
         <PageCanvas readOnly variables={variables} placement={placement} page={page} caption={`pages.onlinejain.com${page?.path ?? ''} · Version ${cur.letter}`} />
+      </Card>
+    </div>
+  )
+}
+
+/* "What it returned" for an experiment — projected enrolment revenue per version (A/B/C/D/E). A
+   version with fewer leads but a bigger ticket can still win on money, so this can crown a
+   different winner than cost-per-lead. Main view = ranked revenue bars; Investigate drills the
+   per-version projection. Handles collecting / 0-enrolment / tie / same-page cases. */
+function ExperimentReturn({ e }: { e: (typeof EXPERIMENTS)[number] }) {
+  const investigate = useInvestigate()
+  const list = isNVar(e)
+    ? (e.variants ?? []).map((v) => ({ letter: v.letter, name: v.name, pageId: v.pageId, spend: v.spend, leads: goalVarOf(e)?.arms[v.letter]?.count ?? 0 }))
+    : [
+        { letter: 'A', name: expPage(e)?.name ?? 'Control', pageId: e.pageId, spend: e.control.spend, leads: e.control.leads },
+        { letter: 'B', name: (e.variantPageId && PAGES.find((p) => p.id === e.variantPageId)?.name) || 'Variant B', pageId: e.variantPageId ?? e.pageId, spend: e.variant.spend, leads: e.variant.leads },
+      ]
+  const rows = list.map((v) => ({ ...v, biz: bizFromLeads(v.pageId, v.spend, v.leads), cpl: v.leads ? Math.round(v.spend / v.leads) : null }))
+  const maxRev = Math.max(...rows.map((r) => r.biz.revenue), 0)
+
+  if (maxRev <= 0 || e.verdict === 'pending') {
+    return (
+      <div className="mt-5">
+        <SectionHead title="What it returned" hint="projected enrolment revenue per version" />
+        <Card className="p-5"><p className="text-[13px] leading-relaxed text-fg-muted">Too early — projected revenue appears once a version reaches enough leads to enrol. The cost-per-lead read above is the live decision for now.</p></Card>
+      </div>
+    )
+  }
+
+  const sorted = [...rows].sort((a, z) => z.biz.revenue - a.biz.revenue)
+  const revLeader = sorted[0]
+  const withLeads = rows.filter((r) => r.leads > 0)
+  const costLeader = withLeads.length ? withLeads.reduce((a, b) => ((a.cpl ?? Infinity) <= (b.cpl ?? Infinity) ? a : b)) : undefined
+  const tie = sorted.length > 1 && sorted[0].biz.revenue === sorted[1].biz.revenue
+  const flip = !!costLeader && costLeader.letter !== revLeader.letter && !tie
+  const ticketsDiffer = !!costLeader && ticketSize(revLeader.pageId) !== ticketSize(costLeader.pageId)
+
+  const drill = () =>
+    investigate({
+      title: `What it returned — ${e.name}`,
+      definition: "Projected enrolment revenue per version: each version’s leads → sales-qualified → enrolled (at the page’s qualify rate and a 34% close-rate), × the programme ticket. CAC is each version’s spend ÷ its enrolments — the cost to win one enrolment, the deeper cost beneath cost-per-lead. It can crown a different winner than cost-per-lead when programmes have different ticket sizes.",
+      columns: [
+        { key: 'v', label: 'Version' },
+        { key: 'enq', label: 'Leads', align: 'right' },
+        { key: 'en', label: 'Enrol', align: 'right' },
+        { key: 't', label: 'Ticket', align: 'right' },
+        { key: 'rev', label: 'Revenue', align: 'right' },
+        { key: 'cac', label: 'CAC', align: 'right' },
+        { key: 'roas', label: 'Return', align: 'right' },
+      ],
+      rows: sorted.map((r) => ({
+        v: `${r.letter} · ${r.name}`,
+        enq: num(r.leads),
+        en: r.biz.enrolled ? num(r.biz.enrolled) : '—',
+        t: money(ticketSize(r.pageId)),
+        rev: r.biz.enrolled ? money(r.biz.revenue) : '—',
+        cac: r.biz.cac ? inr(r.biz.cac) : '—',
+        roas: r.biz.enrolled ? `${r.biz.roas}×` : '—',
+      })),
+      note: "Projections use each page’s qualify rate and a 34% close-rate — directional until enrolments are confirmed over the intake window.",
+    })
+
+  return (
+    <div className="mt-5">
+      <SectionHead title="What it returned" hint="projected revenue per version — money, not just leads" right={<InvestigateLink onClick={drill} />} />
+      <Card className="p-5">
+        <div className="space-y-3">
+          {sorted.map((r, i) => (
+            <div key={r.letter}>
+              <div className="mb-1 flex items-center justify-between gap-2 text-[12px]">
+                <span className="flex min-w-0 items-center gap-1.5">
+                  <b className="shrink-0 text-fg">Version {r.letter}</b>
+                  <span className="truncate text-fg-subtle">{r.name}</span>
+                  {i === 0 && !tie && <span className="shrink-0 rounded bg-pos-tint px-1 py-0.5 text-[9px] font-bold uppercase text-pos">Most revenue</span>}
+                  {flip && costLeader && r.letter === costLeader.letter && <span className="shrink-0 rounded bg-navy-tint px-1 py-0.5 text-[9px] font-bold uppercase text-navy">Cheapest/lead</span>}
+                </span>
+                <span className="tnum shrink-0 text-fg-muted">{r.biz.enrolled ? <><b className="text-fg">{money(r.biz.revenue)}</b> · {r.biz.roas}×</> : '—'}</span>
+              </div>
+              <div className="h-2.5 overflow-hidden rounded-full bg-sunken">
+                <motion.i className={cn('block h-full rounded-full', i === 0 && !tie ? 'bg-pos' : 'bg-pos/45')} initial={{ width: 0 }} animate={{ width: `${Math.max(2, (r.biz.revenue / maxRev) * 100)}%` }} transition={{ duration: 0.7, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] }} />
+              </div>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3.5 border-t border-line pt-3 text-[11.5px] leading-relaxed text-fg-muted">
+          {tie ? (
+            <>The versions project <b className="text-fg">similar revenue</b> at this volume — use the cost-per-lead read above for now.</>
+          ) : flip && ticketsDiffer ? (
+            <><b className="text-fg">Version {revLeader.letter}</b> brings the most revenue (<b className="tnum">{money(revLeader.biz.revenue)}</b>), even though <b className="text-fg">Version {costLeader!.letter}</b> is cheapest per lead — its <b className="tnum">{money(ticketSize(revLeader.pageId))}</b> ticket outweighs the extra leads.</>
+          ) : (
+            <><b className="text-fg">Version {revLeader.letter}</b> brings the most projected revenue at <b className="tnum">{money(revLeader.biz.revenue)}</b> · {revLeader.biz.roas}× return. Projected from each version’s leads at the page’s qualify + close rates.</>
+          )}
+        </p>
       </Card>
     </div>
   )

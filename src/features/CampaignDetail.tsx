@@ -8,6 +8,8 @@ import { Button, Card, InvestigateLink, SectionHead } from '@/components/ui'
 import { NetIcon } from './Pages'
 import { cn, inr, inrCompact, num } from '@/lib/utils'
 import { CAMPAIGNS, PAGES } from '@/data/samurai'
+import { campaignBiz } from '@/data/business'
+import { TicketRevenue } from '@/components/TicketRevenue'
 import { C } from '@/lib/tokens'
 
 function campWeekly(c: (typeof CAMPAIGNS)[number]) {
@@ -53,7 +55,7 @@ export function CampaignDetail({ id }: { id: string }) {
 
   const stats = [
     { icon: Wallet, label: 'Spend', value: c.spend * f, kind: 'inr' as const, sub: label },
-    { icon: Users, label: 'Page leads', value: c.leads * f, kind: 'num' as const, sub: 'enquiries from this campaign' },
+    { icon: Users, label: 'Page leads', value: c.leads * f, kind: 'num' as const, sub: 'leads from this campaign' },
     { icon: TrendingUp, label: 'Cost per lead', value: cpl ?? 0, kind: 'inr' as const, sub: noleads ? 'no leads yet' : 'spend ÷ leads', dash: noleads },
     { icon: TrendingUp, label: 'Good-lead rate', value: Math.round(c.good * 100), kind: 'pct' as const, sub: 'CRM grade', dash: noleads },
   ]
@@ -78,7 +80,7 @@ export function CampaignDetail({ id }: { id: string }) {
       {noleads && (
         <div className="mb-4 flex items-center gap-2 rounded-[12px] border border-neg/25 bg-neg-tint px-4 py-3 text-[13px] text-fg">
           <AlertTriangle className="h-4 w-4 shrink-0 text-neg" />
-          <span><b>This campaign is spending with zero return.</b> {inr(c.spend * f)} spent, {num(c.clicks * f)} clicks, no enquiries — part of the confirmed leak on Overview.</span>
+          <span><b>This campaign is spending with zero return.</b> {inr(c.spend * f)} spent, {num(c.clicks * f)} clicks, no leads — part of the confirmed leak on Overview.</span>
         </div>
       )}
 
@@ -91,6 +93,8 @@ export function CampaignDetail({ id }: { id: string }) {
           </Card>
         ))}
       </div>
+
+      <TicketRevenue pageId={c.pageId} name={c.name} biz={campaignBiz(c)} f={f} hint="enrolment revenue · this campaign" />
 
       <div className="mt-5">
         <SectionHead title="Spend over time" hint="weekly · this quarter" right={<InvestigateLink onClick={weekDrill} />} />

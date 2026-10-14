@@ -83,7 +83,7 @@ const BUILDERS: Record<string, () => Omit<Insight, 'key' | 'question' | 'persona
       headline: `${inr(total)} of last month's spend leaked`,
       summary: `${inr(total)} leaked — 23% of spend; the biggest single leak is the B.Com mobile form at ₹64,300.`,
       narrative: [
-        `**${inr(total)}** — **23% of your ${inr(ACCOUNT.spend)} spend** — reached pages that produced no enquiry at all. Left running, that is **${inr(total * 12)} a year**.`,
+        `**${inr(total)}** — **23% of your ${inr(ACCOUNT.spend)} spend** — reached pages that produced no leads at all. Left running, that is **${inr(total * 12)} a year**.`,
         `Two of these are provably broken, not judgement calls: a B.Com mobile form that has failed since 14 Nov, and spend still hitting a July intake that closed 11 days ago.`,
       ],
       caveat: `The homepage leak is "likely", not confirmed — it converts, just worse than a matched page — so treat it as a review, not a guaranteed saving.`,
@@ -161,9 +161,9 @@ const BUILDERS: Record<string, () => Omit<Insight, 'key' | 'question' | 'persona
     const total = zero.reduce((a, c) => a + c.spend, 0)
     return {
       headline: `${zero.length} Meta campaigns spend ${inr(total)} for zero leads`,
-      summary: `${zero.length} Meta campaigns spent ${inr(total)} for zero enquiries — the clearest spend to cut or fix.`,
+      summary: `${zero.length} Meta campaigns spent ${inr(total)} for zero leads — the clearest spend to cut or fix.`,
       narrative: [
-        `Two campaigns are buying clicks that never become enquiries — the clearest thing to cut or fix this week.`,
+        `Two campaigns are buying clicks that never become leads — the clearest thing to cut or fix this week.`,
         `Together they burn **${inr(total)}** with **nothing to show**: one points at a broken form, the other at a closed intake.`,
       ],
       chart: { kind: 'cut' },
