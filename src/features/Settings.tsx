@@ -103,15 +103,14 @@ function NumInput({ value, onChange, suffix }: { value: number; onChange: (v: nu
 
 /* ---------------- tabs ---------------- */
 function Setup({ s, lex, onGoto }: { s: S; lex: Lexicon; onGoto: (t: string) => void }) {
+  // Setup = connect your data. Every step reflects REAL connection state (derived from the
+  // tenant's conns), never a hardcoded default, so a fresh workspace is never shown as
+  // partially set up. Offerings and a goal are no longer part of going live.
   const steps: [string, boolean, string][] = [
     ['Connect Google Ads', s.conn.google, 'conn'],
     ['Connect Meta Ads', s.conn.meta, 'conn'],
     ['Connect your CRM', s.conn.crm, 'conn'],
-    ['Install the conversion tag', s.tracking.tagCoverage / s.tracking.tagTotal > 0.9, 'tracking'],
-    [`Add your ${lex.offering.many}`, s.programmes.length > 0, 'prog'],
-    [`Set your ${lex.goalNoun}`, s.intakes.length > 0 && s.intakes.every((i) => i.target > 0), 'prog'],
-    ['Set experiment defaults', !!s.experiments.defaultGoal, 'exp'],
-    ['Configure privacy', s.privacy.ageGate && s.privacy.tokenise, 'privacy'],
+    ['Connect Clarity', s.conn.clarity, 'conn'],
   ]
   const done = steps.filter((x) => x[1]).length
   const pct = Math.round((done / steps.length) * 100)
@@ -119,7 +118,7 @@ function Setup({ s, lex, onGoto }: { s: S; lex: Lexicon; onGoto: (t: string) => 
     <>
       <Card className="mb-4 p-5">
         <div className="flex items-center justify-between">
-          <div><b className="text-[14px] text-fg">Workspace setup</b><div className="text-[12.5px] text-fg-subtle">{done} of {steps.length} steps complete — the platform runs once these are done.</div></div>
+          <div><b className="text-[14px] text-fg">Connect your data</b><div className="text-[12.5px] text-fg-subtle">{done} of {steps.length} sources connected — Samurai reconciles spend → {lex.conversion.many} once they're in.</div></div>
           <div className="tnum text-[22px] font-bold text-brand">{pct}%</div>
         </div>
         <div className="mt-3 h-2 overflow-hidden rounded-full bg-sunken"><motion.div className="h-full rounded-full bg-brand" initial={{ width: 0 }} animate={{ width: `${pct}%` }} transition={{ duration: 0.9, ease: [0.22, 1, 0.36, 1] }} /></div>
@@ -129,11 +128,11 @@ function Setup({ s, lex, onGoto }: { s: S; lex: Lexicon; onGoto: (t: string) => 
           <div key={label} className="flex items-center gap-3 border-b border-line px-5 py-3 last:border-0">
             <span className={cn('grid h-5 w-5 place-items-center rounded-full', ok ? 'bg-pos text-white' : 'border border-line-strong')}>{ok && <Check className="h-3 w-3" />}</span>
             <b className="flex-1 text-[13.5px] text-fg">{label}</b>
-            {ok ? <Badge tone="pos">Done</Badge> : <Button variant="default" size="sm" onClick={() => onGoto(tab)}>Set up</Button>}
+            {ok ? <Badge tone="pos">Connected</Badge> : <Button variant="default" size="sm" onClick={() => onGoto(tab)}>Connect</Button>}
           </div>
         ))}
       </Card>
-      <p className="mt-3 text-[12px] leading-relaxed text-fg-subtle">This is the checklist we walk through when onboarding a new tenant — connect the accounts, add the {lex.offering.many}, set the {lex.goalNoun}, and Samurai starts producing numbers.</p>
+      <p className="mt-3 text-[12px] leading-relaxed text-fg-subtle">Connect your ad accounts and CRM, and Samurai starts producing numbers — one blended cost per {lex.conversion.one}, nothing double-counted.</p>
     </>
   )
 }

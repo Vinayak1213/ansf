@@ -1,4 +1,5 @@
 import { motion } from 'motion/react'
+import { useId } from 'react'
 import {
   Area,
   AreaChart,
@@ -36,7 +37,7 @@ export function Sparkline({ data, tone = 'navy', w = 120, h = 34 }: { data: numb
   const y = (v: number) => pad + (1 - (v - min) / (max - min || 1)) * (h - 2 * pad)
   const d = data.map((v, i) => `${i ? 'L' : 'M'} ${x(i).toFixed(1)} ${y(v).toFixed(1)}`).join(' ')
   const col = tone === 'pos' ? C.pos : tone === 'neg' ? C.neg : C.navy
-  const id = 'sp' + Math.random().toString(36).slice(2, 7)
+  const id = 'sp' + useId().replace(/:/g, '')
   return (
     <svg viewBox={`0 0 ${w} ${h}`} width={w} height={h} preserveAspectRatio="none">
       <defs>

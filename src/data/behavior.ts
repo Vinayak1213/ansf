@@ -12,6 +12,14 @@ export interface JourneyStep { k: string; label: string; count: number; pct: num
 export interface Branch { k: string; label: string; count: number }
 export interface DeviceSplit { k: Device; sharePct: number; convPct: number }
 export interface BehSession { id: string; device: Device; source: string; durSec: number; tags: string[]; converted: boolean }
+
+/* High-signal triage — which reconstructed sessions are worth surfacing, and how to rank them.
+   A FIXED, inspectable signal set + a severity lookup; never a black-box "importance" score. */
+export const HIGH_SIGNAL = new Set(['form error', 'rage click', 'dead click', 'js error', 'quick-back'])
+export const TAG_RANK: Record<string, number> = { 'form error': 5, 'rage click': 4, 'dead click': 3, 'js error': 3, 'quick-back': 2, bounced: 1, left: 1 }
+export const whySurfaced = (tags: string[]) => tags.filter((t) => HIGH_SIGNAL.has(t))
+export const sessionSeverity = (tags: string[]) => tags.reduce((m, t) => Math.max(m, TAG_RANK[t] ?? 0), 0)
+export const isHighSignal = (tags: string[]) => tags.some((t) => HIGH_SIGNAL.has(t))
 export interface PageBehavior {
   sessions: number
   elements: ElEngagement[]
@@ -119,31 +127,32 @@ export function pageBehavior(p: Page): PageBehavior {
     { k: 'tablet', sharePct: tabletShare, convPct: +(baseConv * 0.9).toFixed(1) },
   ]
 
-  // ---- sample sessions for the replay list ----
-  const srcPool = ['Google · MBA Brand', 'Meta · Prospecting', 'Google · Search', 'Meta · Retargeting', 'Direct']
-  const mk = (i: number, device: Device, tags: string[], converted: boolean, dur: number): BehSession => ({ id: `${p.id}-s${i}`, device, source: srcPool[r2(rand() * (srcPool.length - 1))], durSec: dur, tags, converted })
-  const sessionList: BehSession[] = broken
-    ? [
-        mk(1, 'mobile', ['rage click', 'form error'], false, 41),
-        mk(2, 'mobile', ['rage click', 'quick-back'], false, 22),
-        mk(3, 'desktop', ['converted'], true, 76),
-        mk(4, 'mobile', ['dead click'], false, 30),
-        mk(5, 'desktop', ['scrolled 90%', 'left'], false, 52),
-      ]
+  // ---- reconstructed sessions behind the number (deterministic, seeded; a sample, not real video) ----
+  const srcPool = ['Google · Search', 'Meta · Prospecting', 'Google · Brand', 'Meta · Retargeting', 'Direct']
+  const sigWeights: [string, number][] = broken
+    ? [['form error', 0.34], ['rage click', 0.22], ['dead click', 0.1], ['quick-back', 0.08], ['converted', 0.04], ['clean', 0.22]]
     : closed
-      ? [
-          mk(1, 'desktop', ['quick-back'], false, 12),
-          mk(2, 'mobile', ['bounced'], false, 8),
-          mk(3, 'desktop', ['scrolled 40%', 'left'], false, 19),
-          mk(4, 'mobile', ['quick-back'], false, 11),
-        ]
-      : [
-          mk(1, 'desktop', ['converted'], true, 84),
-          mk(2, 'mobile', ['converted'], true, 63),
-          mk(3, 'desktop', ['scrolled 75%'], false, 47),
-          mk(4, 'mobile', ['rage click'], false, 29),
-          mk(5, 'desktop', ['dead click', 'left'], false, 38),
-        ]
+      ? [['quick-back', 0.4], ['bounced', 0.28], ['left', 0.18], ['dead click', 0.05], ['clean', 0.09]]
+      : [['converted', 0.42], ['clean', 0.22], ['rage click', 0.08], ['dead click', 0.07], ['quick-back', 0.1], ['left', 0.11]]
+  const pickSig = (x: number) => { let a = x; for (const [k, w] of sigWeights) { a -= w; if (a <= 0) return k } return sigWeights[sigWeights.length - 1][0] }
+  const sessionList: BehSession[] = Array.from({ length: 28 }, (_, i) => {
+    const sr = rng(`${p.id}-sess-${i}`)
+    const sig = pickSig(sr())
+    const device: Device = sig === 'converted' ? (sr() < 0.6 ? 'desktop' : 'mobile')
+      : sig === 'form error' || sig === 'rage click' ? (sr() < 0.75 ? 'mobile' : 'desktop')
+      : sr() < 0.5 ? 'mobile' : sr() < 0.85 ? 'desktop' : 'tablet'
+    const source = srcPool[r2(sr() * (srcPool.length - 1))]
+    let tags: string[]; let converted = false; let dur: number
+    if (sig === 'converted') { tags = sr() < 0.18 ? ['rage click', 'converted'] : ['converted']; converted = true; dur = r2(60 + sr() * 40) }
+    else if (sig === 'clean') { tags = [`scrolled ${r2(40 + sr() * 50)}%`]; dur = r2(25 + sr() * 35) }
+    else if (sig === 'form error') { tags = sr() < 0.5 ? ['form error', 'rage click'] : ['form error']; dur = r2(20 + sr() * 30) }
+    else if (sig === 'rage click') { tags = broken && sr() < 0.4 ? ['rage click', 'form error'] : ['rage click']; dur = r2(18 + sr() * 30) }
+    else if (sig === 'dead click') { tags = sr() < 0.4 ? ['dead click', 'left'] : ['dead click']; dur = r2(15 + sr() * 30) }
+    else if (sig === 'quick-back') { tags = ['quick-back']; dur = r2(6 + sr() * 12) }
+    else if (sig === 'bounced') { tags = ['bounced']; dur = r2(4 + sr() * 8) }
+    else { tags = [`scrolled ${r2(45 + sr() * 45)}%`, 'left']; dur = r2(20 + sr() * 30) }
+    return { id: `${p.id}-s${i}`, device, source, durSec: dur, tags, converted }
+  })
 
   return { sessions, elements, scroll, journey, branches, friction: { rageClicks, deadClicks, quickBacks, jsErrors, score, worstEl }, engagement, devices, sessionList }
 }
@@ -153,6 +162,150 @@ export function frictionHotspots(pages: Page[]) {
   return pages
     .map((p) => ({ p, b: pageBehavior(p) }))
     .sort((a, b) => b.b.friction.score - a.b.friction.score)
+}
+
+/* ---- Field-level form analytics ------------------------------------------------------------
+   The enquiry form is where a visitor becomes a lead. The journey funnel stops at the form
+   ("Form started" → "Submitted"); this zooms INSIDE it, field by field, so a marketer can see
+   WHICH field loses the lead. Deterministic: derived from the same page traffic + a seeded,
+   fault-aware friction profile. Everything reconciles — `completed` IS the page's leads, and the
+   per-field abandons sum to (started − completed). No AI; the verdict is pure comparison:
+   the field with the biggest drop vs the rest is the one to fix first (Zuko's framework). */
+
+export type FieldKind = 'text' | 'email' | 'tel' | 'select' | 'submit'
+/** the enquiry form's fields, in order (mirrors the landing-page mockup) */
+const FORM_FIELDS: { k: string; label: string; kind: FieldKind }[] = [
+  { k: 'name', label: 'Full name', kind: 'text' },
+  { k: 'email', label: 'Email', kind: 'email' },
+  { k: 'phone', label: 'Phone number', kind: 'tel' },
+  { k: 'programme', label: 'Programme of interest', kind: 'select' },
+  { k: 'submit', label: 'Submit', kind: 'submit' },
+]
+/** where abandons concentrate, by fault profile (shares sum to 1) */
+const ABANDON_W: Record<string, Record<string, number>> = {
+  ok: { name: 0.07, email: 0.13, phone: 0.33, programme: 0.24, submit: 0.23 },
+  broken: { name: 0.04, email: 0.05, phone: 0.16, programme: 0.15, submit: 0.6 }, // submit fails → drops pile on Submit
+  closed: { name: 0.12, email: 0.14, phone: 0.26, programme: 0.22, submit: 0.26 },
+}
+
+export interface FormField {
+  k: string
+  label: string
+  kind: FieldKind
+  reached: number // started users who got to this field
+  dropped: number // abandoned the form at this field
+  dropPct: number // dropped ÷ reached — of those who reached it, share who left
+  shareOfAbandons: number // dropped ÷ total abandons — of everyone who left, share who left here
+  medianSec: number // active time in the field
+  hesitationSec: number // time to start the field (uncertainty)
+  corrections: number // returns / re-typed values — validation or comprehension friction
+  correctionPct: number
+  errors: number // validation messages shown
+  blankPct: number // left blank on submit (optional fields)
+}
+export interface FormAnalysis {
+  name: string
+  started: number // = journey "Form started"
+  completed: number // = journey "Submitted" = the page's leads (reconciles)
+  completionPct: number
+  totalAbandons: number
+  fields: FormField[]
+  killerK?: string // the field to fix first (worst drop); undefined when closed/insufficient
+  status: 'ok' | 'broken' | 'closed' | 'insufficient'
+  deviceCause?: string // for broken forms — where it fails
+  avgFillSec: number // time to fill the form (sum of field active times)
+  failedSubmits: number // reached Submit but hit a validation error
+  slowestK?: string // the field that takes longest
+  frictionK?: string // the field with the most corrections + errors
+  reachedForm?: number // scrolled to the form (page view only)
+  nonStarters: number // reached the form but never started a field
+  nonStarterPct: number
+}
+
+/** field-level form analysis from explicit started/completed counts (reconciles to them).
+ *  Used by the page view (via formAnalysis) and by experiments (per variant). */
+export function formAnalysisFor(p: Page, started: number, completed: number, reachedForm?: number): FormAnalysis {
+  const broken = p.fault === 'broken_form'
+  const closed = p.fault === 'closed_intake'
+  const totalAbandons = Math.max(0, started - completed)
+  const w = ABANDON_W[broken ? 'broken' : closed ? 'closed' : 'ok']
+
+  // distribute abandons across fields; fix rounding onto the heaviest field so the sum is exact
+  const dropped: Record<string, number> = {}
+  let acc = 0
+  for (const f of FORM_FIELDS) { const d = Math.round(totalAbandons * w[f.k]); dropped[f.k] = d; acc += d }
+  if (acc !== totalAbandons && FORM_FIELDS.length) {
+    const biggest = [...FORM_FIELDS].sort((a, b) => w[b.k] - w[a.k])[0].k
+    dropped[biggest] = Math.max(0, dropped[biggest] + (totalAbandons - acc))
+  }
+
+  let reached = started
+  const fields: FormField[] = FORM_FIELDS.map((f) => {
+    const r = reached
+    const d = Math.min(dropped[f.k], r)
+    reached = r - d
+    const fr = rng(p.id + ':' + f.k)
+    const jf = (s: number) => 1 + (fr() - 0.5) * s
+    const baseTime: Record<string, number> = { name: 6, email: 9, phone: 14, programme: 11, submit: 3 }
+    const medianSec = clamp(r2((baseTime[f.k] ?? 6) * jf(0.3) * (broken && f.k === 'submit' ? 1.7 : 1)), 1, 90)
+    const baseHes: Record<string, number> = { name: 2, email: 2, phone: 3, programme: 5, submit: 1 }
+    const hesitationSec = clamp(r2((baseHes[f.k] ?? 2) * jf(0.4)), 0, 40)
+    const corrRate = broken && f.k === 'submit' ? 0.42 : broken && f.k === 'phone' ? 0.25 : ({ name: 0.04, email: 0.06, phone: 0.17, programme: 0.08, submit: 0.07 } as Record<string, number>)[f.k] ?? 0.05
+    const corrections = r2(r * corrRate * jf(0.2))
+    const errRate = broken && f.k === 'submit' ? 0.5 : broken && f.k === 'phone' ? 0.2 : ({ name: 0.01, email: 0.05, phone: 0.09, programme: 0.02, submit: 0.06 } as Record<string, number>)[f.k] ?? 0.02
+    const errors = r2(r * errRate * jf(0.2))
+    const blankRate = f.k === 'programme' ? 0.08 : f.k === 'phone' ? 0.03 : 0.01
+    return {
+      k: f.k, label: f.label, kind: f.kind,
+      reached: r, dropped: d,
+      dropPct: r ? +((d / r) * 100).toFixed(1) : 0,
+      shareOfAbandons: totalAbandons ? +((d / totalAbandons) * 100).toFixed(1) : 0,
+      medianSec, hesitationSec, corrections,
+      correctionPct: r ? +((corrections / r) * 100).toFixed(1) : 0,
+      errors,
+      blankPct: f.kind === 'submit' ? 0 : +(blankRate * 100 * jf(0.3)).toFixed(1),
+    }
+  })
+
+  let status: FormAnalysis['status'] = 'ok'
+  let killerK: string | undefined
+  let deviceCause: string | undefined
+  if (started < 15) {
+    status = 'insufficient'
+  } else if (broken) {
+    status = 'broken'
+    killerK = 'submit'
+    deviceCause = 'mobile — the form fails below 380px'
+  } else if (closed) {
+    status = 'closed'
+  } else {
+    const killer = [...fields].sort((a, b) => b.dropped - a.dropped)[0]
+    if (killer && killer.dropped > 0) killerK = killer.k
+  }
+
+  const nonSubmit = fields.filter((f) => f.kind !== 'submit')
+  const avgFillSec = nonSubmit.reduce((a, f) => a + f.medianSec, 0)
+  const failedSubmits = fields.find((f) => f.k === 'submit')?.errors ?? 0
+  const slowestK = [...nonSubmit].sort((a, b) => b.medianSec - a.medianSec)[0]?.k
+  const fr = [...fields].sort((a, b) => b.corrections + b.errors - (a.corrections + a.errors))[0]
+  const frictionK = fr && fr.corrections + fr.errors > 0 ? fr.k : undefined
+  const nonStarters = reachedForm != null ? Math.max(0, reachedForm - started) : 0
+  const nonStarterPct = reachedForm ? +((nonStarters / reachedForm) * 100).toFixed(1) : 0
+
+  return {
+    name: 'Enquiry form', started, completed,
+    completionPct: started ? +((completed / started) * 100).toFixed(1) : 0,
+    totalAbandons, fields, killerK, status, deviceCause,
+    avgFillSec, failedSubmits, slowestK, frictionK, reachedForm, nonStarters, nonStarterPct,
+  }
+}
+
+/** field-level form analysis for a page, reconciling to its journey funnel + leads */
+export function formAnalysis(p: Page, beh: PageBehavior): FormAnalysis {
+  const started = beh.journey.find((s) => s.k === 'start')?.count ?? 0
+  const completed = beh.journey.find((s) => s.k === 'submit')?.count ?? p.leads
+  const reachedForm = beh.journey.find((s) => s.k === 'scroll')?.count
+  return formAnalysisFor(p, started, completed, reachedForm)
 }
 
 /* ---- experiment behavioral lens: a full A/B behaviour report (Statsig-style scorecard + per-arm heatmap/funnel + over-time) ---- */

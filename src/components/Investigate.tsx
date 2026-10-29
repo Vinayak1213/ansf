@@ -12,8 +12,10 @@ export interface Column {
 export interface InvestigatePayload {
   title: string
   definition?: string
-  columns: Column[]
-  rows: Record<string, ReactNode>[]
+  /** rich custom content rendered in place of the table (e.g. a Lead Story timeline). */
+  body?: ReactNode
+  columns?: Column[]
+  rows?: Record<string, ReactNode>[]
   foot?: Record<string, ReactNode>
   note?: string
 }
@@ -60,41 +62,44 @@ export function InvestigateProvider({ children }: { children: ReactNode }) {
                     {payload.definition && (
                       <p className="mb-4 rounded-[10px] border border-line bg-sunken px-3.5 py-2.5 text-[12.5px] leading-relaxed text-fg-muted">{payload.definition}</p>
                     )}
-                    <div className="overflow-x-auto rounded-[10px] border border-line">
-                      <table className="w-full text-[12.5px]">
-                        <thead>
-                          <tr className="border-b border-line bg-surface/60 text-fg-subtle">
-                            {payload.columns.map((c) => (
-                              <th key={c.key} className={cn('px-3 py-2 font-medium', c.align === 'right' ? 'text-right' : 'text-left')}>
-                                {c.label}
-                              </th>
+                    {payload.body}
+                    {payload.columns && payload.rows && (
+                      <div className="overflow-x-auto rounded-[10px] border border-line">
+                        <table className="w-full text-[12.5px]">
+                          <thead>
+                            <tr className="border-b border-line bg-surface/60 text-fg-subtle">
+                              {payload.columns.map((c) => (
+                                <th key={c.key} className={cn('px-3 py-2 font-medium', c.align === 'right' ? 'text-right' : 'text-left')}>
+                                  {c.label}
+                                </th>
+                              ))}
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {payload.rows.map((r, i) => (
+                              <tr key={i} className="border-b border-line last:border-0 hover:bg-sunken/60">
+                                {payload.columns!.map((c) => (
+                                  <td key={c.key} className={cn('px-3 py-2 text-fg', c.align === 'right' ? 'text-right tnum' : 'text-left')}>
+                                    {r[c.key]}
+                                  </td>
+                                ))}
+                              </tr>
                             ))}
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {payload.rows.map((r, i) => (
-                            <tr key={i} className="border-b border-line last:border-0 hover:bg-sunken/60">
-                              {payload.columns.map((c) => (
-                                <td key={c.key} className={cn('px-3 py-2 text-fg', c.align === 'right' ? 'text-right tnum' : 'text-left')}>
-                                  {r[c.key]}
-                                </td>
-                              ))}
-                            </tr>
-                          ))}
-                        </tbody>
-                        {payload.foot && (
-                          <tfoot>
-                            <tr className="border-t border-line bg-surface/60 font-semibold text-fg">
-                              {payload.columns.map((c) => (
-                                <td key={c.key} className={cn('px-3 py-2', c.align === 'right' ? 'text-right tnum' : 'text-left')}>
-                                  {payload.foot![c.key]}
-                                </td>
-                              ))}
-                            </tr>
-                          </tfoot>
-                        )}
-                      </table>
-                    </div>
+                          </tbody>
+                          {payload.foot && (
+                            <tfoot>
+                              <tr className="border-t border-line bg-surface/60 font-semibold text-fg">
+                                {payload.columns.map((c) => (
+                                  <td key={c.key} className={cn('px-3 py-2', c.align === 'right' ? 'text-right tnum' : 'text-left')}>
+                                    {payload.foot![c.key]}
+                                  </td>
+                                ))}
+                              </tr>
+                            </tfoot>
+                          )}
+                        </table>
+                      </div>
+                    )}
                     {payload.note && <p className="mt-3 text-[11.5px] leading-relaxed text-fg-subtle">{payload.note}</p>}
                   </div>
                 </motion.div>

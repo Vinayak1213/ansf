@@ -9,6 +9,7 @@ import { inr } from '@/lib/utils'
 import {
   ACCOUNT,
   CAMPAIGNS,
+  LEAKS,
   QUARTER,
   cheapestPage,
   dearestPage,
@@ -16,6 +17,7 @@ import {
   pageName,
   platformStats,
   quarterCpl,
+  type Leak,
 } from '@/data/samurai'
 
 export type ChartSpec =
@@ -35,6 +37,39 @@ export interface ApplyAction {
   label: string
   pageId?: string
 }
+
+/* A proposed move the agent (the "Spend Steward") puts in front of the marketer.
+   confidence governs trust: `confirmed` = a reconciled recovered ₹ (ties to account totals, drillable);
+   `likely` = worth a review, not a guaranteed saving; `estimate` = a forward-looking projection, not money in hand.
+   Moves are composed from the reconciled LEAKS + platform split — never a model figure. */
+export interface Move {
+  id: string
+  title: string
+  why: string
+  recovered: number | null // reconciled recovered ₹ for `confirmed`; null for an efficiency/projected move
+  confidence: 'confirmed' | 'likely' | 'estimate'
+  action?: ApplyAction
+  investigateKey: string // the chat insight that shows the full working
+}
+
+const RANK: Record<Move['confidence'], number> = { confirmed: 0, likely: 1, estimate: 2 }
+
+export function proposeMoves(): Move[] {
+  const byReason = (r: Leak['reason']) => LEAKS.find((l) => l.reason === r)
+  const form = byReason('broken_form')
+  const closed = byReason('closed_intake')
+  const wrong = byReason('wrong_page')
+  const s = platformStats()
+  const list: Move[] = []
+  if (form) list.push({ id: 'm-form', title: `Fix the ${pageName(form.page)} mobile form`, why: form.detail, recovered: form.amount, confidence: 'confirmed', action: { kind: 'fixform', label: 'Flag to engineering' }, investigateKey: 'leak' })
+  if (closed) list.push({ id: 'm-pause', title: 'Pause spend to the closed July intake', why: closed.detail, recovered: closed.amount, confidence: 'confirmed', action: { kind: 'pausejuly', label: 'Pause the campaign' }, investigateKey: 'cut' })
+  if (wrong) list.push({ id: 'm-route', title: `Route ${pageName(wrong.page)} traffic to the matched page`, why: wrong.detail, recovered: wrong.amount, confidence: 'likely', investigateKey: 'leak' })
+  list.push({ id: 'm-realloc', title: 'Shift budget from Meta to Google Search', why: `Meta costs ${inr(s.meta.cpl)}/lead vs Google ${inr(s.google.cpl)} — ${s.ratio}× dearer. Same spend buys more leads at the lower CAC.`, recovered: null, confidence: 'estimate', action: { kind: 'reallocate', label: 'Shift budget' }, investigateKey: 'platform' })
+  return list.sort((a, b) => RANK[a.confidence] - RANK[b.confidence] || (b.recovered ?? 0) - (a.recovered ?? 0))
+}
+
+/** reconciled money the confirmed moves recover — ties to confirmedLeak(), i.e. the account totals */
+export const recoverableThisWeek = () => proposeMoves().filter((m) => m.confidence === 'confirmed').reduce((a, m) => a + (m.recovered ?? 0), 0)
 
 export interface Insight {
   key: string

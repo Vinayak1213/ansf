@@ -11,6 +11,19 @@ export default defineConfig({
       '@': fileURLToPath(new URL('./src', import.meta.url)),
     },
   },
+  // Two front-ends on one origin, one design system:
+  //   index.html → the Samurai product (what clients use)
+  //   admin.html → the Samurai Console (what our operators use to provision clients)
+  // They share state only through localStorage (see src/lib/tenant.tsx). In dev,
+  // open the console at http://localhost:5173/admin.html.
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        console: fileURLToPath(new URL('./admin.html', import.meta.url)),
+      },
+    },
+  },
   // Bind to every network interface so teammates on the same Wi-Fi/LAN can open
   // the dev server at http://<your-LAN-IP>:5173 (not just localhost).
   server: {

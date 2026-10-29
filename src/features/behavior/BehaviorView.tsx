@@ -1,14 +1,19 @@
 import { motion } from 'motion/react'
-import { Activity, ArrowUpRight, Gauge, MousePointerClick, MousePointer2, Play, ScrollText, Timer, TriangleAlert, Zap } from 'lucide-react'
-import { useState } from 'react'
+import { Activity, ArrowUpRight, CheckCircle2, Gauge, MousePointerClick, MousePointer2, Play, ScrollText, Timer, TriangleAlert, Zap } from 'lucide-react'
+import { useState, type ReactNode } from 'react'
 import { useNav } from '@/lib/nav'
-import { Card, SectionHead } from '@/components/ui'
+import { Card, SectionHead, Segmented, Collapsible } from '@/components/ui'
 import { cn, num } from '@/lib/utils'
 import { C } from '@/lib/tokens'
 import { PAGES, goalVarOf, isNVar, type Experiment, type ExpVariant, type Page } from '@/data/samurai'
-import { expBehavior, openBehavior, pageBehavior, type BehMetric, type BehSession, type Device, type ElEngagement, type ExpArm, type ExpBehaviorData, type PageBehavior } from '@/data/behavior'
+import { expBehavior, formAnalysis, openBehavior, pageBehavior, isHighSignal, sessionSeverity, whySurfaced, TAG_RANK, type BehMetric, type BehSession, type Device, type ElEngagement, type ExpArm, type ExpBehaviorData, type PageBehavior } from '@/data/behavior'
 import { expPage } from '@/data/experiments'
+import { abandonersForPage } from '@/data/leads'
+import { useInvestigate } from '@/components/Investigate'
 import { SessionReplayModal } from './SessionReplay'
+import { FormAnalytics, FormFunnelCompare } from './FormAnalytics'
+import { ConverterLift } from '@/features/leads/ConverterLift'
+import { leadStoryPayload } from '@/features/leads/LeadStory'
 
 const r2 = (n: number) => Math.round(n)
 const clamp = (n: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, n))
@@ -27,11 +32,17 @@ function heat(t: number) {
 
 type Mode = 'clicks' | 'scroll' | 'attention' | 'rage'
 
+type Lens = 'onpage' | 'form' | 'friction'
+
 export function BehaviorView({ p }: { p: Page }) {
   const beh = pageBehavior(p)
+  const [lens, setLens] = useState<Lens>('onpage')
   return (
     <div className="space-y-5">
-      {/* summary strip */}
+      {/* lead with the answer — always visible, and it names the lens to open */}
+      <BehaviorVerdict p={p} beh={beh} onJump={setLens} />
+
+      {/* summary strip — always visible */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Stat icon={<MousePointer2 className="h-4 w-4" />} label="Sessions" value={num(beh.sessions)} tone="navy" />
         <Stat icon={<Timer className="h-4 w-4" />} label="Avg active time" value={fmtSec(beh.engagement.activeSec)} tone="navy" />
@@ -39,20 +50,92 @@ export function BehaviorView({ p }: { p: Page }) {
         <Stat icon={<Zap className="h-4 w-4" />} label="Friction score" value={`${beh.friction.score}`} tone={beh.friction.score >= 60 ? 'neg' : beh.friction.score >= 35 ? 'warn' : 'pos'} sub={beh.friction.score >= 60 ? 'high' : beh.friction.score >= 35 ? 'watch' : 'low'} />
       </div>
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.5fr_1fr]">
-        <InteractionMap p={p} beh={beh} />
-        <div className="space-y-5">
-          <ScrollDepth beh={beh} />
-          <JourneyFunnel beh={beh} />
+      {/* sub-nav — one shared primitive; new features dock into a named lens, not a longer scroll */}
+      <Segmented
+        value={lens}
+        onChange={setLens}
+        options={[
+          { value: 'onpage', label: 'On-page', icon: <MousePointerClick className="h-3.5 w-3.5" /> },
+          { value: 'form', label: 'Form & people', icon: <ScrollText className="h-3.5 w-3.5" /> },
+          { value: 'friction', label: 'Friction & sessions', icon: <Zap className="h-3.5 w-3.5" /> },
+        ]}
+      />
+
+      {lens === 'onpage' && (
+        <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.5fr_1fr]">
+          <InteractionMap p={p} beh={beh} />
+          <div className="space-y-5">
+            <ScrollDepth beh={beh} />
+            <JourneyFunnel beh={beh} />
+          </div>
         </div>
-      </div>
+      )}
 
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <FrictionPanel p={p} beh={beh} />
-        <DeviceSplit p={p} beh={beh} />
-      </div>
+      {lens === 'form' && (
+        <div className="space-y-5">
+          <FormAnalytics p={p} beh={beh} />
+          <ConverterLift pageId={p.id} />
+        </div>
+      )}
 
-      <SessionList beh={beh} p={p} />
+      {lens === 'friction' && (
+        <div className="space-y-5">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+            <FrictionPanel p={p} beh={beh} />
+            <DeviceSplit p={p} beh={beh} />
+          </div>
+          <SessionList beh={beh} p={p} />
+        </div>
+      )}
+    </div>
+  )
+}
+
+/* The one answer the tab opens with — synthesised from the same functions the blocks use (so it
+   always reconciles), and it names which lens to open. Lead-with-the-answer, never a bare heatmap. */
+function BehaviorVerdict({ p, beh, onJump }: { p: Page; beh: PageBehavior; onJump: (l: Lens) => void }) {
+  const fa = formAnalysis(p, beh)
+  const mobile = beh.devices.find((d) => d.k === 'mobile')
+  const killer = fa.killerK ? fa.fields.find((f) => f.k === fa.killerK) : undefined
+  const worst = beh.friction.worstEl ? beh.elements.find((e) => e.k === beh.friction.worstEl) : undefined
+
+  let tone: 'neg' | 'warn' | 'pos' = 'pos'
+  let text: ReactNode = <>This page converts cleanly — no single blocker stands out. The lenses below hold the detail.</>
+  let jump: Lens | null = null
+  let jumpLabel = ''
+
+  if (p.fault === 'broken_form') {
+    tone = 'neg'; jump = 'friction'; jumpLabel = 'Friction & sessions'
+    text = <>The mobile form is failing — mobile is <b>{mobile?.sharePct}%</b> of sessions and converts <b>0%</b>. Fix the submit step.</>
+  } else if (p.fault === 'closed_intake') {
+    tone = 'neg'; jump = 'friction'; jumpLabel = 'Friction & sessions'
+    text = <>Intake is closed, but spend is still arriving — these visits can't convert. Pause the spend.</>
+  } else if (fa.status === 'broken') {
+    tone = 'neg'; jump = 'form'; jumpLabel = 'Form & people'
+    text = <>The form is failing at submit — visitors reach it but almost none complete. Start with the form.</>
+  } else if (killer && killer.dropped > 0) {
+    tone = 'warn'; jump = 'form'; jumpLabel = 'Form & people'
+    text = <><b>{killer.label}</b> loses the most leads — a <b>{killer.dropPct}%</b> drop among visitors who reach it. Start with the form.</>
+  } else if (beh.friction.score >= 45 && worst && worst.rage > 0) {
+    tone = 'warn'; jump = 'friction'; jumpLabel = 'Friction & sessions'
+    text = <><b>{worst.label}</b> is the friction hotspot — <b>{num(worst.rage)}</b> rage clicks. Worth a look in the sessions.</>
+  }
+
+  const t = {
+    neg: { bg: 'bg-neg-tint/50', ic: 'text-neg', Icon: TriangleAlert },
+    warn: { bg: 'bg-warn-tint/50', ic: 'text-warn', Icon: TriangleAlert },
+    pos: { bg: 'bg-pos-tint/50', ic: 'text-pos', Icon: CheckCircle2 },
+  }[tone]
+
+  return (
+    <div className={cn('flex flex-wrap items-center gap-x-2.5 gap-y-1.5 rounded-[12px] px-4 py-3 text-[13px] leading-relaxed', t.bg)}>
+      <t.Icon className={cn('h-[18px] w-[18px] shrink-0', t.ic)} />
+      <span className="min-w-0 flex-1 text-fg">{text}</span>
+      {jump && (
+        <button onClick={() => onJump(jump!)} className="inline-flex shrink-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-[12px] font-semibold text-navy transition-colors hover:bg-panel/60">
+          {jumpLabel} <ArrowUpRight className="h-3.5 w-3.5" />
+        </button>
+      )}
     </div>
   )
 }
@@ -85,15 +168,12 @@ function InteractionMap({ p, beh }: { p: Page; beh: PageBehavior }) {
 
   return (
     <Card className="p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div>
-          <div className="text-[13px] font-semibold text-fg">Interaction map</div>
-          <div className="text-[11.5px] text-fg-subtle">where {num(beh.sessions)} sessions clicked, scrolled &amp; got stuck</div>
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Seg options={MODES.map((m) => ({ k: m.k, label: m.label, icon: m.icon }))} value={mode} onChange={(v) => setMode(v as Mode)} />
-        </div>
-      </div>
+      <SectionHead
+        icon={<MousePointerClick className="h-4 w-4" />}
+        title="Interaction map"
+        hint={`where ${num(beh.sessions)} sessions clicked, scrolled & got stuck`}
+        right={<Seg options={MODES.map((m) => ({ k: m.k, label: m.label, icon: m.icon }))} value={mode} onChange={(v) => setMode(v as Mode)} />}
+      />
       <div className="mb-2 flex items-center justify-between">
         <Seg options={[{ k: 'desktop', label: 'Desktop' }, { k: 'mobile', label: 'Mobile' }, { k: 'tablet', label: 'Tablet' }]} value={device} onChange={(v) => setDevice(v as Device)} small />
         <Legend mode={mode} />
@@ -322,28 +402,126 @@ function DeviceSplit({ p, beh }: { p: Page; beh: PageBehavior }) {
   )
 }
 
-/* ---------------- Session replay list ---------------- */
+/* ---------------- Session triage (the high-signal recordings behind the number) ---------------- */
 const TAG_TONE: Record<string, string> = { 'rage click': 'bg-neg-tint text-neg', 'form error': 'bg-neg-tint text-neg', 'dead click': 'bg-warn-tint text-warn', 'quick-back': 'bg-warn-tint text-warn', bounced: 'bg-sunken text-fg-muted', left: 'bg-sunken text-fg-muted', converted: 'bg-pos-tint text-pos' }
 function tagTone(t: string) { return TAG_TONE[t] ?? (t.startsWith('scrolled') ? 'bg-navy-tint text-navy' : 'bg-sunken text-fg-muted') }
 
+type Outcome = 'converted' | 'abandoned' | 'friction' | 'left'
+type TriageRow = { key: string; device: string; source?: string; durSec?: number; sev: number; why: string[]; outcome: Outcome; label: string; high: boolean; onOpen: () => void }
+
+const SIG_LABEL: Record<string, string> = { 'form error': 'Hit a form error', 'rage click': 'Rage-clicked an element', 'dead click': 'Dead-clicked an element', 'quick-back': 'Left within seconds', bounced: 'Bounced immediately', left: 'Browsed, then left' }
+function primaryLabel(tags: string[]) {
+  const top = [...tags].sort((a, b) => (TAG_RANK[b] ?? 0) - (TAG_RANK[a] ?? 0))[0]
+  return SIG_LABEL[top] ?? 'Browsed, then left'
+}
+
+const CHIPS: { k: string; label: string }[] = [
+  { k: 'all', label: 'High-signal' },
+  { k: 'form error', label: 'Form errors' },
+  { k: 'rage click', label: 'Rage clicks' },
+  { k: 'dead click', label: 'Dead clicks' },
+  { k: 'quick-back', label: 'Quick-backs' },
+  { k: 'abandoned', label: 'Abandoned form' },
+  { k: 'converted', label: 'Converted' },
+  { k: 'everything', label: 'All sessions' },
+]
+const CAP = 6
+
+/* Rows arrive severity-ranked; round-robin across outcomes so the top of the list shows the RANGE
+   of problems (an abandoner, then the friction behind it, then a struggling convert) instead of six
+   identical rows of whichever outcome happens to be most common. Each bucket stays severity-sorted. */
+function diversify(rows: TriageRow[]): TriageRow[] {
+  const buckets = new Map<Outcome, TriageRow[]>()
+  for (const r of rows) (buckets.get(r.outcome) ?? buckets.set(r.outcome, []).get(r.outcome)!).push(r)
+  const ordered = [...buckets.values()].sort((a, b) => b[0].sev - a[0].sev)
+  const out: TriageRow[] = []
+  for (let i = 0; out.length < rows.length; i++) { let pushed = false; for (const b of ordered) if (b[i]) { out.push(b[i]); pushed = true }; if (!pushed) break }
+  return out
+}
+
+/* Triage, not a dump. A session SURFACES only because its tags intersect a FIXED high-signal set
+   (never a computed "importance" score) — the default view is that set, ranked by a fixed severity.
+   Reconstructed friction/convert sessions open the timeline; anonymous form-abandoners open the
+   CRM-stitched Lead Story. One family: the real sessions behind the number. */
 function SessionList({ beh, p }: { beh: PageBehavior; p: Page }) {
+  const investigate = useInvestigate()
   const [open, setOpen] = useState<BehSession | null>(null)
+  const [filter, setFilter] = useState('all')
+  const [expanded, setExpanded] = useState(false)
+
+  if (beh.sessions < 15) {
+    return (
+      <Card className="p-4">
+        <SectionHead icon={<ScrollText className="h-4 w-4" />} title="Sessions worth a look" hint="the recordings behind the number" />
+        <div className="rounded-[10px] bg-sunken px-3.5 py-3 text-[12.5px] text-fg-muted">Too few sessions on this page to triage yet — behaviour needs ~15+ recordings before a reliable high-signal shortlist.</div>
+      </Card>
+    )
+  }
+
+  const sessionRows: TriageRow[] = beh.sessionList.map((s) => {
+    const why = whySurfaced(s.tags)
+    const high = isHighSignal(s.tags)
+    const outcome: Outcome = s.converted ? 'converted' : high ? 'friction' : 'left'
+    const label = s.converted ? (high ? 'Converted despite friction' : 'Converted cleanly') : primaryLabel(s.tags)
+    return { key: s.id, device: s.device, source: s.source, durSec: s.durSec, sev: sessionSeverity(s.tags) + (s.converted ? 0.5 : 0), why, outcome, label, high, onOpen: () => setOpen(s) }
+  })
+  const abandRows: TriageRow[] = abandonersForPage(p.id).rows.map((v) => ({
+    key: v.id, device: v.device, source: v.firstSource, sev: 5, why: [`left on ${v.droppedField ?? 'the form'}`], outcome: 'abandoned', label: 'Started the form, abandoned it', high: true, onOpen: () => investigate(leadStoryPayload(v)),
+  }))
+  const rows = [...abandRows, ...sessionRows].sort((a, b) => b.sev - a.sev)
+
+  const matches = (r: TriageRow, k: string) =>
+    k === 'all' ? r.high : k === 'everything' ? true : k === 'converted' ? r.outcome === 'converted' : k === 'abandoned' ? r.outcome === 'abandoned' : r.why.includes(k)
+  const countFor = (k: string) => rows.filter((r) => matches(r, k)).length
+  const chips = CHIPS.filter((c) => c.k === 'all' || c.k === 'everything' || countFor(c.k) > 0)
+
+  const filtered = diversify(rows.filter((r) => matches(r, filter)))
+  const shown = expanded ? filtered : filtered.slice(0, CAP)
+  const totalSessions = beh.sessions.toLocaleString('en-IN')
+  const dot = (o: Outcome) => (o === 'converted' ? 'bg-pos' : o === 'abandoned' ? 'bg-neg' : o === 'friction' ? 'bg-warn' : 'bg-line-strong')
+
   return (
     <Card className="p-4">
-      <SectionHead title="Session replay" hint={`${beh.sessions.toLocaleString('en-IN')} recorded · the ones behind the number`} right={<span className="text-[11px] text-fg-subtle">via Microsoft Clarity</span>} />
-      <div className="divide-y divide-line">
-        {beh.sessionList.map((s) => (
-          <button key={s.id} onClick={() => setOpen(s)} className="flex w-full items-center gap-3 rounded-[8px] px-1 py-2.5 text-left transition-colors hover:bg-sunken/60">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line bg-panel text-navy transition-colors group-hover:border-navy/40"><Play className="h-3.5 w-3.5" /></span>
-            <span className="w-16 shrink-0 text-[11.5px] font-medium capitalize text-fg-muted">{s.device}</span>
-            <span className="hidden w-40 shrink-0 truncate text-[11.5px] text-fg-subtle sm:block">{s.source}</span>
-            <div className="flex flex-1 flex-wrap gap-1">
-              {s.tags.map((t) => <span key={t} className={cn('rounded px-1.5 py-0.5 text-[10px] font-semibold', tagTone(t))}>{t}</span>)}
-            </div>
-            <span className="inline-flex items-center gap-1 text-[11.5px] text-fg-subtle tnum"><Gauge className="h-3 w-3" />{fmtSec(s.durSec)}</span>
-          </button>
-        ))}
+      <SectionHead icon={<ScrollText className="h-4 w-4" />} title="Sessions worth a look" hint={`${rows.filter((r) => r.high).length} high-signal of ${totalSessions} — surfaced by what the visitor did, not a score`} />
+
+      {/* filter chips — only the ones with sessions */}
+      <div className="mb-1 flex flex-wrap gap-1.5">
+        {chips.map((c) => {
+          const n = countFor(c.k)
+          const on = filter === c.k
+          return (
+            <button key={c.k} onClick={() => { setFilter(c.k); setExpanded(false) }} className={cn('inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11.5px] font-medium transition-colors', on ? 'border-navy bg-navy-tint/50 text-navy' : 'border-line text-fg-muted hover:border-line-strong hover:text-fg')}>
+              {c.label}<span className={cn('tnum text-[10px]', on ? 'text-navy' : 'text-fg-subtle')}>{n}</span>
+            </button>
+          )
+        })}
       </div>
+
+      {shown.length === 0 ? (
+        <div className="mt-2 rounded-[10px] bg-pos-tint/40 px-3.5 py-3 text-[12.5px] text-fg-muted">No sessions here — every recent recording in this filter converted cleanly or browsed without friction.</div>
+      ) : (
+        <div className="mt-1 divide-y divide-line">
+          {shown.map((r) => (
+            <button key={r.key} onClick={r.onOpen} className="flex w-full items-center gap-3 rounded-[8px] px-1 py-2.5 text-left transition-colors hover:bg-sunken/60">
+              <span className={cn('h-2 w-2 shrink-0 rounded-full', dot(r.outcome))} />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[12.5px] font-medium text-fg">{r.label}</div>
+                <div className="truncate text-[11px] text-fg-subtle">{r.device}{r.source ? ` · ${r.source}` : ''}{r.durSec != null ? ` · ${fmtSec(r.durSec)}` : ''}</div>
+              </div>
+              {r.why[0] && <span className={cn('hidden shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold sm:inline-block', tagTone(r.why[0]))}>{r.why[0]}</span>}
+              <ArrowUpRight className="h-3.5 w-3.5 shrink-0 text-fg-subtle" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {filtered.length > CAP && (
+        <button onClick={() => setExpanded((e) => !e)} className="mt-2 inline-flex items-center gap-1 text-[12px] font-medium text-navy transition-colors hover:text-navy-hover">
+          {expanded ? 'Show fewer' : `Show ${filtered.length - CAP} more`}
+        </button>
+      )}
+
+      <p className="mt-3 border-t border-line pt-2.5 text-[11px] leading-relaxed text-fg-subtle">A session is surfaced only when it shows a fixed signal — a form error, rage or dead click, a quick-back, or a conversion — never a black-box score. Open one for its event timeline; abandoned forms open the lead's story.</p>
       <SessionReplayModal session={open} page={p} onClose={() => setOpen(null)} />
     </Card>
   )
@@ -357,7 +535,9 @@ export function ExpBehaviorView({ e }: { e: Experiment }) {
   if (isNVar(e)) return <NVariantBehavior e={e} />
   const d = expBehavior(e)
   const page = expPage(e)
-  if (d.collecting) return <ExpBehaviorCollecting e={e} page={page} vpage={PAGES.find((p) => p.id === e.variantPageId)} />
+  const vpage = PAGES.find((p) => p.id === e.variantPageId)
+  if (d.collecting) return <ExpBehaviorCollecting e={e} page={page} vpage={vpage} />
+  const startedOf = (leads: number, vis: number) => clamp(r2(leads / 0.62), leads, vis || leads)
   return (
     <div className="space-y-5">
       <ExpHeadline d={d} />
@@ -366,6 +546,15 @@ export function ExpBehaviorView({ e }: { e: Experiment }) {
         <PrimaryOverTime d={d} />
         <FunnelCompare d={d} />
       </div>
+      {page && (
+        <FormFunnelCompare
+          hint="which field each version loses leads on"
+          arms={[
+            { letter: 'A', name: page.name, page, started: startedOf(e.control.leads, e.control.v), completed: e.control.leads },
+            { letter: 'B', name: (vpage ?? page).name, page: vpage ?? page, started: startedOf(e.variant.leads, e.variant.v), completed: e.variant.leads },
+          ]}
+        />
+      )}
       <HeatmapCompare d={d} />
       <ReplayByArm d={d} page={page} headline={d.headline} />
     </div>
@@ -540,6 +729,15 @@ function NVariantBehavior({ e }: { e: Experiment }) {
             <p className="mt-3 border-t border-line pt-2.5 text-[11px] text-fg-subtle">Landed = this test's sessions on each version; Submitted = its {goal?.name ?? 'goal'} count — the same numbers as the Result tab. The steps between show where each page loses people.</p>
           </Card>
 
+          {/* form analytics A vs B vs C — the field-level zoom of the journey above */}
+          <FormFunnelCompare
+            hint="which field each version loses leads on"
+            arms={withBeh.map((r) => {
+              const a = arm(r)
+              return { letter: r.v.letter, name: r.page.name, page: r.page, started: a.journey.find((j) => j.k === 'start')?.count ?? 0, completed: goalCount(r.v.letter) }
+            })}
+          />
+
           {/* friction A vs B vs C */}
           <Card className="p-4">
             <SectionHead title="Friction signals — A vs B vs C" hint="frustration per version, the way Clarity & FullStory flag it" />
@@ -590,11 +788,11 @@ function NVarReplay({ rows }: { rows: NVarRow[] }) {
   return (
     <Card className="p-4">
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <div><div className="text-[13px] font-semibold text-fg">Session replay by version</div><div className="text-[11.5px] text-fg-subtle">watch how each version's page behaved · via Microsoft Clarity</div></div>
+        <div><div className="text-[13px] font-semibold text-fg">Sessions by version</div><div className="text-[11.5px] text-fg-subtle">a sample of each version's page — open for the event timeline</div></div>
         <Seg options={rows.map((r) => ({ k: r.v.letter, label: `Version ${r.v.letter}` }))} value={active} onChange={setActive} small />
       </div>
       <div className="divide-y divide-line">
-        {cur.beh.sessionList.map((s) => (
+        {cur.beh.sessionList.slice(0, 5).map((s) => (
           <button key={s.id} onClick={() => setOpen(s)} className="flex w-full items-center gap-3 rounded-[8px] px-1 py-2.5 text-left transition-colors hover:bg-sunken/60">
             <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-line bg-panel text-navy"><Play className="h-3.5 w-3.5" /></span>
             <span className="w-16 shrink-0 text-[11.5px] font-medium capitalize text-fg-muted">{s.device}</span>
@@ -673,8 +871,7 @@ function ExpHeadline({ d }: { d: ExpBehaviorData }) {
 function Scorecard({ d }: { d: ExpBehaviorData }) {
   const dom = clamp(Math.max(...d.metrics.flatMap((m) => [Math.abs(m.ciLow), Math.abs(m.ciHigh)]), 20), 20, 90)
   return (
-    <Card className="p-4">
-      <SectionHead title="Behavioural scorecard" hint="lift, confidence interval & significance · control vs variant" />
+    <Collapsible icon={<Activity className="h-4 w-4" />} title="Behavioural scorecard" hint="lift, confidence interval & significance — open for the deeper read">
       <div className="overflow-x-auto">
         <table className="w-full text-[12.5px]">
           <thead className="text-fg-subtle">
@@ -692,7 +889,7 @@ function Scorecard({ d }: { d: ExpBehaviorData }) {
         </table>
       </div>
       <p className="mt-2.5 border-t border-line pt-2.5 text-[11px] leading-relaxed text-fg-subtle">Green = a real improvement (the interval clears zero); grey = not yet significant — the interval still crosses zero, so it could be noise. Rage clicks is a guardrail: down is good.</p>
-    </Card>
+    </Collapsible>
   )
 }
 
@@ -823,12 +1020,12 @@ function MiniMap({ title, arm, tint }: { title: string; arm: ExpArm; tint: 'navy
 function ReplayByArm({ d, page, headline }: { d: ExpBehaviorData; page?: Page; headline?: string }) {
   const [arm, setArm] = useState<'control' | 'variant'>('variant')
   const [open, setOpen] = useState<BehSession | null>(null)
-  const list = arm === 'control' ? d.sessionsByArm.control : d.sessionsByArm.variant
+  const list = (arm === 'control' ? d.sessionsByArm.control : d.sessionsByArm.variant).slice(0, 5)
   const armLabel = arm === 'control' ? 'Control (A)' : 'Variant (B)'
   return (
     <Card className="p-4">
       <div className="mb-2 flex items-center justify-between">
-        <div><div className="text-[13px] font-semibold text-fg">Session replay by version</div><div className="text-[11.5px] text-fg-subtle">watch how each variant behaved · via Microsoft Clarity</div></div>
+        <div><div className="text-[13px] font-semibold text-fg">Sessions by version</div><div className="text-[11.5px] text-fg-subtle">a sample of each arm — open for the event timeline</div></div>
         <Seg options={[{ k: 'control', label: 'Control (A)' }, { k: 'variant', label: 'Variant (B)' }]} value={arm} onChange={(v) => setArm(v as 'control' | 'variant')} small />
       </div>
       {list.length ? (

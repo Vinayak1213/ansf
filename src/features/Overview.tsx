@@ -1,8 +1,9 @@
 import { motion } from 'motion/react'
-import { AlertTriangle, ArrowRight, CheckCircle2, FlaskConical, Link2, Plus, ScrollText, TrendingUp, Users, Wallet } from 'lucide-react'
+import { AlertTriangle, ArrowRight, Check, Rocket, TrendingUp, Users, Wallet } from 'lucide-react'
 import { AnimatedNumber } from '@/components/AnimatedNumber'
 import { CplBars, CplTrendChart, RingGauge, Sparkline, SpendSplitBar } from '@/components/charts'
-import { Badge, Card, Delta, InvestigateLink, SectionHead } from '@/components/ui'
+import { Badge, Button, Card, Delta, InvestigateLink, SectionHead } from '@/components/ui'
+import { onboardingProgress } from '@/lib/onboarding'
 import { RangePicker, useRange } from '@/lib/range'
 import { useNav } from '@/lib/nav'
 import { useInvestigate } from '@/components/Investigate'
@@ -14,7 +15,8 @@ import { pageNet } from '@/data/pages'
 import { NetIcon } from '@/features/Pages'
 import { frictionHotspots, openBehavior } from '@/data/behavior'
 import { Activity, Sparkles } from 'lucide-react'
-import { cap, lexiconOf, useTenant } from '@/lib/tenant'
+import { cap, isOperatorView, lexiconOf, ownsSeededData, useTenant } from '@/lib/tenant'
+import { ConverterLift } from '@/features/leads/ConverterLift'
 
 const stagger = { animate: { transition: { staggerChildren: 0.06 } } }
 const rise = { initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as const } } }
@@ -25,9 +27,10 @@ export function Overview() {
   const { tenant } = useTenant()
   const investigate = useInvestigate()
 
-  // A just-onboarded client has no live data of its own — show an honest cold-start,
-  // configured from what they set up, instead of borrowing another workspace's numbers.
-  if (tenant.fresh) return <FreshOverview />
+  // Only the data-owning tenant renders the bundled dataset. Every other workspace —
+  // still in setup OR already live — has no numbers of its own, so it gets the honest
+  // cold-start instead of borrowing another workspace's figures.
+  if (!ownsSeededData(tenant)) return <FreshOverview />
 
   const lex = lexiconOf(tenant)
   const trend = cplTrend()
@@ -98,7 +101,7 @@ export function Overview() {
               <div className="hidden w-px self-stretch bg-line lg:block" />
               <div className="lg:w-[340px]">
                 <div className="mb-3 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-subtle">{QUARTER.intake} intake pacing</span>
+                  <span className="text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-subtle">{QUARTER.intake} {lex.goalNoun} pacing</span>
                   <Badge tone="warn">Behind by {QUARTER.pctPeriod - QUARTER.pctTarget} pts</Badge>
                 </div>
                 <RingGauge value={QUARTER.pctTarget} label={`${QUARTER.enrol} of ${QUARTER.target}`} sub={`${need} more by ${QUARTER.closeDate}`} />
@@ -117,6 +120,11 @@ export function Overview() {
         {/* What the spend returned — the business / revenue layer */}
         <motion.div variants={rise}>
           <RevenueCard f={f} label={label} />
+        </motion.div>
+
+        {/* What converters do differently — the behaviour × outcome flagship (user-level layer) */}
+        <motion.div variants={rise}>
+          <ConverterLift />
         </motion.div>
 
         {/* Tests in flight */}
@@ -183,25 +191,18 @@ function FreshOverview() {
   const { go } = useNav()
   const { tenant } = useTenant()
   const lex = lexiconOf(tenant)
-  const conns = tenant.conns ?? []
-  const offers = tenant.offerings ?? []
-  const hasGoal = !!tenant.goal
-  const target = tenant.goal?.target ?? 0
-  const goalPeriod = tenant.goal?.name
-  const setupPct = Math.round(((1 + conns.length / 4) / 4) * 100)
-
-  const steps: { done: boolean; icon: typeof Link2; title: string; detail: string; cta: { label: string; on: () => void } | null }[] = [
-    { done: true, icon: CheckCircle2, title: 'Workspace created', detail: `${tenant.name} · ${tenant.industry} · ${tenant.region}`, cta: null },
-    { done: conns.length >= 4, icon: Link2, title: 'Connect data sources', detail: conns.length ? `${conns.length} of 4 connected${conns.length < 4 ? ' — link the rest so spend and leads reconcile' : ' — spend and leads reconcile automatically'}` : 'Link Google Ads, Meta, your CRM and Clarity', cta: conns.length >= 4 ? null : { label: 'Finish connecting', on: () => go('settings') } },
-    { done: false, icon: ScrollText, title: 'Add landing pages', detail: 'No pages yet — import your live URLs or build one', cta: { label: 'Add a page', on: () => go('pages') } },
-    { done: false, icon: FlaskConical, title: 'Launch your first test', detail: 'Pick a page, change one thing, watch cost per lead', cta: { label: 'New experiment', on: () => go('experiments') } },
-  ]
+  const prog = onboardingProgress(tenant)
+  const live = tenant.fresh !== true // already set up, but still owns no seeded data
+  const opView = isOperatorView() // read-only operator view — don't offer to finish the client's setup
+  // "Signed in" is implicit for someone viewing their own workspace — show the steps they still act on.
+  const steps = prog.clientSteps.filter((s) => s.key !== 'signed_in')
+  const doneCount = steps.filter((s) => s.done).length
 
   return (
     <div className="mx-auto max-w-[1080px] px-8 py-7">
       <div className="mb-5">
         <h1 className="text-[22px] font-semibold tracking-tight text-fg">Overview</h1>
-        <p className="mt-0.5 text-[13px] text-fg-subtle">Which page turns ad spend into {lex.conversion.many} most cheaply — and whether you'll hit the {lex.goalNoun}.</p>
+        <p className="mt-0.5 text-[13px] text-fg-subtle">Which page turns ad spend into {lex.conversion.many} most cheaply — once your data is connected.</p>
       </div>
 
       <motion.div variants={stagger} initial="initial" animate="animate" className="space-y-4">
@@ -214,52 +215,33 @@ function FreshOverview() {
                 <div className="flex items-center gap-2.5">
                   <span className="grid h-9 w-9 shrink-0 place-items-center rounded-[10px] bg-navy text-white"><Sparkles className="h-[18px] w-[18px]" /></span>
                   <div>
-                    <div className="text-[15px] font-semibold text-fg">Welcome to Samurai, {tenant.name}.</div>
-                    <div className="text-[12.5px] text-fg-subtle">The same Samurai product — your numbers, kept entirely separate.</div>
+                    <div className="text-[15px] font-semibold text-fg">{live ? `${tenant.name} is live on Samurai.` : `Welcome to Samurai, ${tenant.name}.`}</div>
+                    <div className="text-[12.5px] text-fg-subtle">{live ? 'Your numbers appear here as spend and leads flow in.' : 'The same Samurai product — your numbers, kept entirely separate.'}</div>
                   </div>
                 </div>
 
-                <div className="mb-3 mt-5 flex items-center gap-3">
-                  <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-sunken">
-                    <motion.i className="block h-full rounded-full bg-navy" initial={{ width: 0 }} animate={{ width: `${setupPct}%` }} transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }} />
+                {live ? (
+                  <div className="mb-1 mt-5 flex flex-wrap items-center gap-3">
+                    <Button variant="navy" size="md" onClick={() => go('settings')}>Open Settings</Button>
+                    <span className="text-[12.5px] text-fg-subtle">Add or change your data connections anytime in Settings.</span>
                   </div>
-                  <span className="tnum text-[12px] font-semibold text-navy">{setupPct}% set up</span>
-                </div>
+                ) : (
+                  <>
+                    <div className="mb-4 mt-5 flex flex-wrap items-center gap-3">
+                      {!opView && <Button variant="navy" size="md" onClick={() => go('onboarding', 'complete')}><Rocket className="h-4 w-4" /> Finish setup</Button>}
+                      <span className="text-[12.5px] text-fg-subtle"><b className="tnum text-fg">{doneCount} of {steps.length}</b> steps done{opView && ' — the client finishes setup themselves'}</span>
+                    </div>
 
-                <div className="space-y-1">
-                  {steps.map((s) => {
-                    const Ico = s.done ? CheckCircle2 : s.icon
-                    return (
-                      <div key={s.title} className="flex items-start gap-3 rounded-[10px] px-2 py-2 transition-colors hover:bg-sunken/50">
-                        <Ico className={cn('mt-0.5 h-[18px] w-[18px] shrink-0', s.done ? 'text-pos' : 'text-fg-subtle')} />
-                        <div className="min-w-0 flex-1">
-                          <div className={cn('text-[13px] font-medium', s.done ? 'text-fg-muted line-through decoration-line-strong' : 'text-fg')}>{s.title}</div>
-                          <div className="text-[11.5px] leading-snug text-fg-subtle">{s.detail}</div>
+                    <div className="space-y-0.5">
+                      {steps.map((s) => (
+                        <div key={s.key} className="flex items-center gap-2.5 rounded-[10px] px-2 py-1.5">
+                          <span className={cn('grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-bold', s.done ? 'bg-pos text-white' : 'border border-dashed border-line-strong text-fg-subtle')}>{s.done && <Check className="h-3 w-3" />}</span>
+                          <span className={cn('text-[13px]', s.done ? 'text-fg-muted line-through decoration-line-strong' : 'text-fg')}>{s.clientLabel}</span>
                         </div>
-                        {s.cta && (
-                          <button onClick={s.cta.on} className="shrink-0 self-center rounded-[8px] border border-line bg-surface px-2.5 py-1.5 text-[12px] font-medium text-navy transition-colors hover:border-line-strong hover:bg-sunken">
-                            {s.cta.label}
-                          </button>
-                        )}
-                      </div>
-                    )
-                  })}
-                </div>
-              </div>
-
-              <div className="hidden w-px self-stretch bg-line lg:block" />
-
-              <div className="lg:w-[300px]">
-                <div className="mb-3 flex items-center justify-between">
-                  <span className="text-[11px] font-semibold uppercase tracking-[0.07em] text-fg-subtle">{hasGoal ? `${goalPeriod} ${lex.goalNoun}` : cap(lex.goalNoun)}</span>
-                  <Badge tone="neutral">Not started</Badge>
-                </div>
-                <RingGauge value={0} label={hasGoal ? `0 of ${num(target)}` : 'Not set'} sub={`Pacing begins with your first ${lex.conversion.one}`} />
-                <div className="mt-4 rounded-[10px] bg-navy-tint/40 px-3 py-2.5 text-[11.5px] leading-relaxed text-fg-muted">
-                  {hasGoal
-                    ? <>You set a goal of <b className="text-fg">{num(target)} {lex.goalUnit}</b> for {goalPeriod}. Samurai starts pacing against it the moment {lex.conversion.many} land.</>
-                    : <>Add a {lex.goalNoun} in Settings and Samurai will pace {lex.goalUnit} against it as your {lex.conversion.many} arrive.</>}
-                </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           </Card>
@@ -272,40 +254,16 @@ function FreshOverview() {
           <EmptyStat icon={TrendingUp} label="Blended CPL" hint={`Appears with first spend & ${lex.conversion.one}`} />
         </motion.div>
 
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <motion.div variants={rise}>
-            <Card className="flex h-full flex-col p-5">
-              <SectionHead title="What Samurai does next" hint="once your data is flowing" />
-              <div className="mt-1 space-y-3.5">
-                <NextStep n={1} title="Reconciles every unit of spend" detail="Spend from your ad accounts meets leads from your CRM — one blended cost per lead, nothing double-counted." />
-                <NextStep n={2} title="Ranks your pages by CPL" detail="The dearest pages surface first — that's where a single test buys the most." />
-                <NextStep n={3} title="Proves what to ship" detail={`Change one thing at a time; Samurai calls the winner and reconciles the saving back to your ${lex.goalNoun}.`} />
-              </div>
-            </Card>
-          </motion.div>
-
-          <motion.div variants={rise}>
-            <Card className="flex h-full flex-col p-5">
-              <SectionHead title={`${cap(lex.offering.many)} you're marketing`} hint={`${offers.length} added during setup`} />
-              {offers.length ? (
-                <div className="mt-1 flex flex-wrap gap-2">
-                  {offers.map((p) => (
-                    <span key={p} className="inline-flex items-center gap-1.5 rounded-[9px] border border-line bg-surface/60 px-2.5 py-1.5 text-[12.5px] font-medium text-fg">
-                      <span className="h-1.5 w-1.5 rounded-full bg-navy/50" />{p}
-                    </span>
-                  ))}
-                </div>
-              ) : (
-                <p className="mt-1 text-[12.5px] text-fg-subtle">No {lex.offering.many} added yet — you can set these in Settings.</p>
-              )}
-              <div className="mt-auto pt-4">
-                <button onClick={() => go('pages')} className="inline-flex items-center gap-1.5 rounded-[9px] bg-navy px-3 py-2 text-[12.5px] font-semibold text-white transition-colors hover:bg-navy-hover">
-                  <Plus className="h-4 w-4" /> Add your first landing page
-                </button>
-              </div>
-            </Card>
-          </motion.div>
-        </div>
+        <motion.div variants={rise}>
+          <Card className="p-5">
+            <SectionHead title="What Samurai does next" hint="once your data is flowing" />
+            <div className="mt-1 grid gap-3.5 sm:grid-cols-3">
+              <NextStep n={1} title="Reconciles every unit of spend" detail="Spend from your ad accounts meets leads from your CRM — one blended cost per lead, nothing double-counted." />
+              <NextStep n={2} title="Ranks your pages by CPL" detail="The dearest pages surface first — that's where a single test buys the most." />
+              <NextStep n={3} title="Proves what to ship" detail="Change one thing at a time; Samurai calls the winner and reconciles the saving." />
+            </div>
+          </Card>
+        </motion.div>
       </motion.div>
     </div>
   )
@@ -341,6 +299,9 @@ function NextStep({ n, title, detail }: { n: number; title: string; detail: stri
    All figures from the canonical, reconciling business model. Deterministic, no AI. */
 function RevenueCard({ f, label }: { f: number; label: string }) {
   const investigate = useInvestigate()
+  const { tenant } = useTenant()
+  const lex = lexiconOf(tenant)
+  const singular = (s: string) => s.replace(/s$/, '')
   const b = accountBiz()
   const spend = Math.round(b.spend * f)
   const revenue = Math.round(b.revenue * f)
@@ -349,10 +310,10 @@ function RevenueCard({ f, label }: { f: number; label: string }) {
 
   const revenueDrill = () =>
     investigate({
-      title: 'What your ad spend returned — by programme',
-      definition: 'Cost vs revenue by programme: what you spent, what came back, the average ticket, the cost to win one enrolment (CAC) and the return. A higher CAC is worth it when the ticket is bigger. Avg ticket is the per-programme average — individual enrolments sync from your AMS. 34% close-rate; reconciles to the account total.',
+      title: `What your ad spend returned — by ${lex.offering.one}`,
+      definition: `Cost vs revenue by ${lex.offering.one}: what you spent, what came back, the average ticket, the cost to win one ${singular(lex.goalUnit)} (CAC) and the return. A higher CAC is worth it when the ticket is bigger. Avg ticket is the per-${lex.offering.one} average — individual ${lex.goalUnit} sync from your CRM. 34% close-rate; reconciles to the account total.`,
       columns: [
-        { key: 'prog', label: 'Programme' },
+        { key: 'prog', label: cap(lex.offering.one) },
         { key: 's', label: 'Spend', align: 'right' },
         { key: 'rev', label: 'Revenue', align: 'right' },
         { key: 't', label: 'Avg ticket', align: 'right' },
@@ -370,15 +331,15 @@ function RevenueCard({ f, label }: { f: number; label: string }) {
           cac: pb.cac ? inr(pb.cac) : '—',
           roas: pb.enrolled ? `${pb.roas}×` : '—',
         })),
-      foot: { prog: 'All programmes', s: inr(spend), rev: money(revenue), t: `avg ${money(b.avgTicket ?? 0)}`, cac: b.cac ? inr(b.cac) : '—', roas: `${b.roas}×` },
-      note: 'Programmes with 0 enrolments still spent — that spend sits in the total but brought no revenue (the confirmed leaks). Open a page or campaign to drill into its cost vs revenue.',
+      foot: { prog: `All ${lex.offering.many}`, s: inr(spend), rev: money(revenue), t: `avg ${money(b.avgTicket ?? 0)}`, cac: b.cac ? inr(b.cac) : '—', roas: `${b.roas}×` },
+      note: `${cap(lex.offering.many)} with 0 ${lex.goalUnit} still spent — that spend sits in the total but brought no revenue (the confirmed leaks). Open a page or campaign to drill into its cost vs revenue.`,
     })
 
   return (
     <Card className="p-5">
-      <SectionHead title="What your ad spend returned" hint={`enrolment revenue · ${label}`} right={<InvestigateLink onClick={revenueDrill} />} />
+      <SectionHead title="What your ad spend returned" hint={`${lex.goalUnit} revenue · ${label}`} right={<InvestigateLink onClick={revenueDrill} />} />
       <p className="text-[13.5px] leading-relaxed text-fg-muted">
-        Your <b className="tnum text-fg">{money(spend)}</b> of ad spend turned into <b className="tnum text-pos">{money(revenue)}</b> of enrolment revenue.
+        Your <b className="tnum text-fg">{money(spend)}</b> of ad spend turned into <b className="tnum text-pos">{money(revenue)}</b> of revenue.
       </p>
 
       {/* spent → returned, to scale */}
@@ -398,12 +359,12 @@ function RevenueCard({ f, label }: { f: number; label: string }) {
       {/* the payoff — plain labels, no jargon */}
       <div className="mt-4 grid grid-cols-3 gap-3 border-t border-line pt-4 text-center">
         <div><div className="tnum text-[21px] font-bold text-pos">{b.roas}×</div><div className="mt-0.5 text-[11px] leading-tight text-fg-subtle">back on every ₹1 spent</div></div>
-        <div><div className="tnum text-[21px] font-bold text-fg">{b.cac ? inr(b.cac) : '—'}</div><div className="mt-0.5 text-[11px] leading-tight text-fg-subtle">to win one enrolment</div></div>
+        <div><div className="tnum text-[21px] font-bold text-fg">{b.cac ? inr(b.cac) : '—'}</div><div className="mt-0.5 text-[11px] leading-tight text-fg-subtle">to win one {singular(lex.goalUnit)}</div></div>
         <div><div className="tnum text-[21px] font-bold text-fg">{money(b.avgTicket ?? 0)}</div><div className="mt-0.5 text-[11px] leading-tight text-fg-subtle">average ticket brought</div></div>
       </div>
 
       <p className="mt-3 text-[11px] leading-relaxed text-fg-subtle">
-        {num(enrolled)} enrolments × their ticket size (varies by programme — avg {money(b.avgTicket ?? 0)}), at a 34% close-rate on qualified leads. Counts only what ad spend drove — the January intake target above tracks all admissions.
+        {num(enrolled)} {lex.goalUnit} × their ticket size (varies by {lex.offering.one} — avg {money(b.avgTicket ?? 0)}), at a 34% close-rate on qualified {lex.conversion.many}. Counts only what ad spend drove — the {lex.goalNoun} target above tracks all {lex.goalUnit}.
       </p>
     </Card>
   )

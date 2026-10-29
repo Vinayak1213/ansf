@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { buildInsight, PROMPTS, routeQuestion } from './engine'
 import { AnswerCard, AiOrb } from './AnswerCard'
 import { GenerativeChart } from './GenerativeChart'
+import { MovesQueue } from './MovesQueue'
 import { Button } from '@/components/ui'
 import { useToast } from '@/components/Toast'
 import { cn, inr } from '@/lib/utils'
-import { ACCOUNT, LEAKS, QUARTER, pageName } from '@/data/samurai'
+import { ACCOUNT, QUARTER } from '@/data/samurai'
 
 type Turn = { key: string; q: string; id: number }
 type Report = { id: string; title: string; keys: string[]; sched?: string }
@@ -29,6 +30,7 @@ export function SamuraiAI() {
 
   const ask = (key: string, q: string) => setThread((t) => [...t, { key, q, id: Date.now() + t.length }])
   const submit = () => { const v = input.trim(); if (!v) return; ask(routeQuestion(v), v); setInput('') }
+  const investigate = (key: string) => ask(key, PROMPTS.find((p) => p.key === key)?.q ?? '')
 
   // keep the newest turn in view — the composer never moves, only the thread grows above it
   useEffect(() => { if (!empty) scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' }) }, [thread.length, empty])
@@ -52,9 +54,17 @@ export function SamuraiAI() {
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto">
         <AnimatePresence mode="wait" initial={false}>
           {empty ? (
-            <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="mx-auto max-w-[860px] px-6 pb-10 pt-10">
-              <Landing onPick={ask} />
-              <div className="mt-9"><NeedsAttention onPick={ask} /></div>
+            <motion.div key="landing" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0, y: -8 }} transition={{ duration: 0.2 }} className="mx-auto max-w-[860px] px-6 pb-10 pt-8">
+              {/* the agent leads with what it would DO this week */}
+              <div className="mb-5 flex items-center gap-3">
+                <AiOrb className="h-11 w-11 shrink-0" />
+                <div>
+                  <h1 className="text-[21px] font-semibold tracking-tight text-fg">{greeting()} — here&rsquo;s what I&rsquo;d do this week</h1>
+                  <p className="mt-0.5 text-[13px] leading-relaxed text-fg-subtle">Ranked by the money it recovers, every ₹ tied to your reconciled totals. You make the call.</p>
+                </div>
+              </div>
+              <MovesQueue onInvestigate={investigate} />
+              <div className="mt-9"><Landing onPick={ask} /></div>
               <div className="mt-8"><Workspace tab={tab} setTab={setTab} reports={reports} draft={draft} onOpen={(r) => { setOpenReport(r); setView('report') }} onSaveDraft={saveDraft} onNew={() => { setDraft({ id: 'draft', title: 'Untitled report', keys: ['digest'] }); setTab('reports') }} onOpenHistory={ask} /></div>
             </motion.div>
           ) : (
@@ -92,12 +102,11 @@ export function SamuraiAI() {
 function Landing({ onPick }: { onPick: (k: string, q: string) => void }) {
   return (
     <div>
-      <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }} className="text-center">
-        <AiOrb className="mx-auto mb-4 h-14 w-14" />
-        <h1 className="text-[26px] font-semibold tracking-tight text-fg">{greeting()} — what can I analyse?</h1>
-        <p className="mx-auto mt-2 max-w-[52ch] text-[13.5px] leading-relaxed text-fg-subtle">Ask about spend, pages, experiments or targets. Every answer is composed from your connected, reconciled data — then you can drop it into a report and schedule it to your team.</p>
-      </motion.div>
-      <motion.div initial="initial" animate="animate" variants={{ animate: { transition: { staggerChildren: 0.045, delayChildren: 0.15 } } }} className="mt-7 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
+      <div className="mb-3 flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[13px] font-medium text-fg-muted">
+        <span className="inline-flex items-center gap-1.5"><Sparkles className="h-4 w-4 text-navy" /> Or ask me anything</span>
+        <span className="text-[12.5px] font-normal text-fg-subtle">— spend, pages, experiments or targets, composed from your reconciled data</span>
+      </div>
+      <motion.div initial="initial" animate="animate" variants={{ animate: { transition: { staggerChildren: 0.045, delayChildren: 0.1 } } }} className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
         {PROMPTS.map((p) => {
           const Icon = STARTER_ICON[p.key] ?? Sparkles
           return (
@@ -144,34 +153,6 @@ function FollowUps({ lastKey, onPick }: { lastKey?: string; onPick: (k: string, 
       {items.map((p) => (
         <button key={p.key} onClick={() => onPick(p.key, p.q)} className="rounded-full border border-line bg-panel px-2.5 py-1 text-[11.5px] text-fg-muted transition-colors hover:border-navy/40 hover:bg-navy-tint hover:text-navy">{p.q}</button>
       ))}
-    </div>
-  )
-}
-
-/* ---------------- needs attention ---------------- */
-function NeedsAttention({ onPick }: { onPick: (k: string, q: string) => void }) {
-  const alerts = LEAKS.filter((l) => l.severity === 'confirmed')
-  const total = alerts.reduce((a, l) => a + l.amount, 0)
-  return (
-    <div className="overflow-hidden rounded-[var(--radius-lg)] border border-line bg-panel shadow-sm">
-      <div className="flex items-center gap-2.5 border-b border-line bg-gradient-to-r from-warn-tint/60 to-transparent px-4 py-3">
-        <span className="relative flex h-2.5 w-2.5"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-warn/50" /><span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-warn" /></span>
-        <div className="flex-1"><div className="text-[13px] font-semibold text-fg">Needs your attention</div><div className="text-[11.5px] text-fg-subtle">Surfaced by Samurai AI, no prompt needed</div></div>
-        <span className="rounded-md bg-neg-tint px-2 py-0.5 text-[11px] font-bold text-neg">{inr(total)} at risk</span>
-      </div>
-      {alerts.map((l, i) => {
-        const key = l.reason === 'closed_intake' ? 'cut' : 'leak'
-        return (
-          <motion.button key={l.id} initial={{ opacity: 0, x: -6 }} animate={{ opacity: 1, x: 0 }} transition={{ delay: 0.05 * i }} onClick={() => onPick(key, PROMPTS.find((p) => p.key === key)!.q)} className="group flex w-full items-center gap-3 border-b border-line px-4 py-3 text-left transition-colors last:border-0 hover:bg-sunken">
-            <span className="grid h-8 w-8 shrink-0 place-items-center rounded-[9px] bg-neg-tint text-neg"><AlertTriangle className="h-4 w-4" /></span>
-            <div className="min-w-0 flex-1">
-              <div className="text-[13px] font-medium text-fg">{pageName(l.page)} — {inr(l.amount)} at risk</div>
-              <div className="truncate text-[11.5px] text-fg-subtle">{l.detail}</div>
-            </div>
-            <span className="inline-flex items-center gap-1 text-[12px] font-medium text-navy opacity-0 transition-opacity group-hover:opacity-100">Investigate →</span>
-          </motion.button>
-        )
-      })}
     </div>
   )
 }

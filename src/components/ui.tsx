@@ -1,5 +1,6 @@
 import { cva, type VariantProps } from 'class-variance-authority'
 import { motion } from 'motion/react'
+import { ChevronDown } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import * as React from 'react'
 
@@ -96,19 +97,50 @@ export function SectionHead({
   title,
   hint,
   right,
+  icon,
   className,
 }: {
   title: string
   hint?: string
   right?: React.ReactNode
+  icon?: React.ReactNode
   className?: string
 }) {
   return (
-    <div className={cn('mb-3 flex items-baseline gap-3', className)}>
+    <div className={cn('mb-3 flex items-baseline gap-2.5', className)}>
+      {icon && <span className="relative top-[2px] shrink-0 text-fg-muted">{icon}</span>}
       <h2 className="text-[15px] font-semibold tracking-tight text-fg">{title}</h2>
       {hint && <span className="text-[12px] text-fg-subtle">{hint}</span>}
-      {right && <div className="ml-auto">{right}</div>}
+      {right && <div className="ml-auto pl-2">{right}</div>}
     </div>
+  )
+}
+
+/* ---------------- Collapsible (default-closed depth; never for a primary block) ---------------- */
+export function Collapsible({
+  title,
+  hint,
+  icon,
+  defaultOpen = false,
+  children,
+}: {
+  title: string
+  hint?: string
+  icon?: React.ReactNode
+  defaultOpen?: boolean
+  children: React.ReactNode
+}) {
+  const [open, setOpen] = React.useState(defaultOpen)
+  return (
+    <Card className="p-5">
+      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-baseline gap-2.5 text-left">
+        {icon && <span className="relative top-[2px] shrink-0 text-fg-muted">{icon}</span>}
+        <span className="text-[15px] font-semibold tracking-tight text-fg">{title}</span>
+        {hint && <span className="text-[12px] text-fg-subtle">{hint}</span>}
+        <ChevronDown className={cn('ml-auto h-4 w-4 shrink-0 self-center text-fg-subtle transition-transform duration-200', open && 'rotate-180')} />
+      </button>
+      {open && <div className="mt-4">{children}</div>}
+    </Card>
   )
 }
 
@@ -127,11 +159,13 @@ export function Segmented<T extends string>({
   value,
   onChange,
   className,
+  size = 'md',
 }: {
-  options: { value: T; label: React.ReactNode }[]
+  options: { value: T; label: React.ReactNode; icon?: React.ReactNode }[]
   value: T
   onChange: (v: T) => void
   className?: string
+  size?: 'sm' | 'md'
 }) {
   const id = React.useId()
   return (
@@ -141,14 +175,15 @@ export function Segmented<T extends string>({
           key={o.value}
           onClick={() => onChange(o.value)}
           className={cn(
-            'relative rounded-[7px] px-2.5 py-1 text-[12px] font-medium transition-colors',
+            'relative rounded-[7px] font-medium transition-colors',
+            size === 'sm' ? 'px-2 py-1 text-[11.5px]' : 'px-2.5 py-1 text-[12px]',
             value === o.value ? 'text-fg' : 'text-fg-subtle hover:text-fg-muted',
           )}
         >
           {value === o.value && (
             <motion.span layoutId={`seg-${id}`} className="absolute inset-0 rounded-[7px] bg-panel shadow-sm" transition={{ type: 'spring', stiffness: 400, damping: 32 }} />
           )}
-          <span className="relative">{o.label}</span>
+          <span className="relative flex items-center gap-1.5">{o.icon}{o.label}</span>
         </button>
       ))}
     </div>
