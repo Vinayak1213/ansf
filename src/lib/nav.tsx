@@ -3,6 +3,7 @@ import { createContext, useContext, useState, type ReactNode } from 'react'
 export type RouteName =
   | 'overview'
   | 'alerts'
+  | 'audience'
   | 'studio'
   | 'decisions'
   | 'pages'

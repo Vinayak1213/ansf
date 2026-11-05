@@ -9,6 +9,7 @@ import { InvestigateProvider } from '@/components/Investigate'
 import { ToastProvider } from '@/components/Toast'
 import { Sidebar, Topbar, type Screen } from '@/components/Shell'
 import { Overview } from '@/features/Overview'
+import { Audience } from '@/features/Audience'
 import { Decisions } from '@/features/Decisions'
 import { EnrollmentStudio } from '@/features/EnrollmentStudio'
 import { SmartAlerts } from '@/features/SmartAlerts'
@@ -69,6 +70,7 @@ function AppInner() {
               Overview self-gates (cold-start vs owner), and Settings is per-tenant. */}
           {route.name === 'overview' && <Overview />}
           {route.name === 'alerts' && (owns ? <SmartAlerts /> : <WorkspaceEmpty screen="alerts" />)}
+          {route.name === 'audience' && (owns ? <Audience /> : <WorkspaceEmpty screen="audience" />)}
           {route.name === 'studio' && (owns ? <EnrollmentStudio /> : <WorkspaceEmpty screen="studio" />)}
           {route.name === 'decisions' && (owns ? <Decisions /> : <WorkspaceEmpty screen="decisions" />)}
           {route.name === 'pages' && (owns ? <Pages /> : <WorkspaceEmpty screen="pages" />)}

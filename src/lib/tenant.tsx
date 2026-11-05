@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from 'react'
+import type { CrmConfig } from '@/data/crm'
 
 /* Multi-tenant: Samurai is one product served to many clients across ANY industry.
    The Samurai brand stays constant; only the *client* (tenant) whose data & config you
@@ -86,6 +87,7 @@ export interface Tenant {
   offerings: string[] // what the client markets (maps to the lexicon's "offering")
   goal?: { name: string; target: number; current?: number; close?: string } // pacing goal
   conns?: string[] // connected sources (Google Ads, Meta Ads, CRM, Clarity)
+  crm?: CrmConfig // CRM provider + field mappings + custom fields (self-serve CRM sync)
   fresh?: boolean // just onboarded — no live data yet
   lexicon?: Lexicon // frozen at onboarding; falls back to the industry default
 
@@ -152,6 +154,7 @@ const SEED: Tenant[] = [
     offerings: ['MBA', 'BBA', 'B.Com', 'BCA', 'MCA', 'M.Com', 'BA', 'B.Sc'],
     goal: { name: 'January 2027', target: 600, current: 412, close: '15 Jan 2027' },
     conns: ['Google Ads', 'Meta Ads', 'CRM', 'Clarity'], lexicon: lexiconFor('Education'),
+    crm: { provider: 'superleap', status: 'synced', lastSynced: Date.now() - 3 * 3_600_000, mappings: { lead: { field: 'application_status', values: ['Enquiry', 'Application started'] }, qualified: { field: 'application_status', values: ['Sales qualified'] }, opportunity: { field: 'application_status', values: ['Registration paid'] }, closed: { field: 'application_status', values: ['Programme fee paid', 'Enrolled'] }, revenue: { field: 'fees_collected' } } },
     source: 'operator', plan: 'scale', status: 'active', createdAt: ago(62), createdBy: 'Samurai Operations',
     admin: { name: 'Akshay R', email: 'akshay@onlinejain.com' },
     access: { method: 'invite', state: 'activated', invitedAt: ago(62), activatedAt: ago(61) },
@@ -210,7 +213,7 @@ export function TenantProvider({ children }: { children: ReactNode }) {
    source of truth for ALL clients; SEED is the one-time initializer written on first
    run (so the demo portfolio is fully mutable — the Console can resend/suspend/update
    it like any provisioned client). Bump STORE_KEY to re-seed after changing SEED. */
-export const STORE_KEY = 'samurai.clients.v2'
+export const STORE_KEY = 'samurai.clients.v5'
 
 export function loadOperatorTenants(): Tenant[] {
   try {

@@ -1,5 +1,5 @@
 import { motion } from 'motion/react'
-import { Activity, ArrowUpRight, CheckCircle2, Gauge, MousePointerClick, MousePointer2, Play, ScrollText, Timer, TriangleAlert, Zap } from 'lucide-react'
+import { Activity, ArrowUpRight, CheckCircle2, Gauge, MousePointerClick, MousePointer2, Play, Route, ScrollText, Target, Timer, TriangleAlert, Zap } from 'lucide-react'
 import { useState, type ReactNode } from 'react'
 import { useNav } from '@/lib/nav'
 import { Card, SectionHead, Segmented, Collapsible } from '@/components/ui'
@@ -12,7 +12,8 @@ import { abandonersForPage } from '@/data/leads'
 import { useInvestigate } from '@/components/Investigate'
 import { SessionReplayModal } from './SessionReplay'
 import { FormAnalytics, FormFunnelCompare } from './FormAnalytics'
-import { ConverterLift } from '@/features/leads/ConverterLift'
+import { VisitorIntel } from './VisitorIntel'
+import { ConversionIntel } from '@/features/leads/ConversionIntel'
 import { leadStoryPayload } from '@/features/leads/LeadStory'
 
 const r2 = (n: number) => Math.round(n)
@@ -32,7 +33,7 @@ function heat(t: number) {
 
 type Mode = 'clicks' | 'scroll' | 'attention' | 'rage'
 
-type Lens = 'onpage' | 'form' | 'friction'
+type Lens = 'onpage' | 'visitors' | 'form' | 'people' | 'friction'
 
 export function BehaviorView({ p }: { p: Page }) {
   const beh = pageBehavior(p)
@@ -56,7 +57,9 @@ export function BehaviorView({ p }: { p: Page }) {
         onChange={setLens}
         options={[
           { value: 'onpage', label: 'On-page', icon: <MousePointerClick className="h-3.5 w-3.5" /> },
-          { value: 'form', label: 'Form & people', icon: <ScrollText className="h-3.5 w-3.5" /> },
+          { value: 'visitors', label: 'Visitors', icon: <Route className="h-3.5 w-3.5" /> },
+          { value: 'form', label: 'Forms', icon: <ScrollText className="h-3.5 w-3.5" /> },
+          { value: 'people', label: 'Get more leads', icon: <Target className="h-3.5 w-3.5" /> },
           { value: 'friction', label: 'Friction & sessions', icon: <Zap className="h-3.5 w-3.5" /> },
         ]}
       />
@@ -71,12 +74,15 @@ export function BehaviorView({ p }: { p: Page }) {
         </div>
       )}
 
+      {lens === 'visitors' && <VisitorIntel p={p} />}
+
       {lens === 'form' && (
         <div className="space-y-5">
           <FormAnalytics p={p} beh={beh} />
-          <ConverterLift pageId={p.id} />
         </div>
       )}
+
+      {lens === 'people' && <ConversionIntel pageId={p.id} />}
 
       {lens === 'friction' && (
         <div className="space-y-5">

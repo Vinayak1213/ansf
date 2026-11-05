@@ -7,24 +7,19 @@ import { RangePicker, useRange } from '@/lib/range'
 import { useNav } from '@/lib/nav'
 import { useToast } from '@/components/Toast'
 import { useExp } from './experiments/ExperimentsProvider'
-import { useInvestigate } from '@/components/Investigate'
-import { Badge, Button, Card, InvestigateLink, SectionHead } from '@/components/ui'
-import { FunnelChain, PageCplChart } from '@/components/charts'
+import { Badge, Button, Card, SectionHead } from '@/components/ui'
+import { FunnelChain } from '@/components/charts'
 import { NetIcon } from './Pages'
 import { cn, inr, num } from '@/lib/utils'
 import { PAGES, findPage, publishDraftPage, removeDraftPage, type Page } from '@/data/samurai'
-import { lifeState, pageAds, pageEndedTest, pageHealth, pageNet, pageRunningTest, pageWeekly } from '@/data/pages'
-import { campaignBiz, campaignsForPage, pageBiz } from '@/data/business'
-import { TicketRevenue } from '@/components/TicketRevenue'
-
-const avg = (a: number[]) => a.reduce((x, y) => x + y, 0) / a.length
+import { lifeState, pageAds, pageEndedTest, pageHealth, pageNet, pageRunningTest } from '@/data/pages'
+import { PageDashboard } from '@/features/dashboard/PageDashboard'
 
 export function PageDetail({ id }: { id: string }) {
-  const { factor: f, label } = useRange()
+  const { label } = useRange()
   const { go } = useNav()
   const toast = useToast()
   const { newExperiment } = useExp()
-  const investigate = useInvestigate()
   const [view, setView] = useState<'performance' | 'behavior'>(() => (takePendingBehavior(id) ? 'behavior' : 'performance'))
   const [, bump] = useReducer((x) => x + 1, 0)
   const p = findPage(id)
@@ -38,8 +33,6 @@ export function PageDetail({ id }: { id: string }) {
   const life = lifeState(p)
   const running = pageRunningTest(p.id)
   const ended = pageEndedTest(p.id)
-  const cpl = p.leads ? p.spend / p.leads : null
-  const gap = p.clicks ? (p.clicks - p.visits) / p.clicks : 0
 
   const header = (
     <>
@@ -118,71 +111,11 @@ export function PageDetail({ id }: { id: string }) {
   }
 
   // ---- normal lifecycle variant ----
-  const wk = pageWeekly(p)
-  const series = wk.cpl
-  const recent = avg(series.slice(-3))
-  const prior = avg(series.slice(-6, -3))
-  const reg =
-    recent > prior * 1.04 ? { tone: 'warn' as const, txt: `Watch: cost per lead up ${Math.round((recent / prior - 1) * 100)}% over 3 weeks` }
-    : recent < prior * 0.96 ? { tone: 'pos' as const, txt: `Improving: cost per lead down ${Math.round((1 - recent / prior) * 100)}% over 3 weeks` }
-    : { tone: 'neutral' as const, txt: 'Stable over the last 3 weeks' }
-  const sinceDelta = Math.round((1 - series[series.length - 1] / series[0]) * 100)
-
-  const chainDrill = () =>
-    investigate({
-      title: `The chain — ${p.name}`,
-      definition: `Cost per lead reconciles down the chain: ${inr(p.spend * f)} spend ÷ ${num(p.leads * f)} leads = ${inr(cpl!)}. ${Math.round(gap * 100)}% of clicks never became visits.`,
-      columns: [{ key: 'k', label: 'Step' }, { key: 'v', label: 'Value', align: 'right' }],
-      rows: [
-        { k: 'Spend', v: inr(p.spend * f) },
-        { k: 'Ad clicks', v: num(p.clicks * f) },
-        { k: 'Visits', v: num(p.visits * f) },
-        { k: 'Leads', v: num(p.leads * f) },
-        { k: 'Cost per lead', v: inr(cpl!) },
-      ],
-    })
-
-  const trendDrill = () =>
-    investigate({
-      title: `Cost per lead by week — ${p.name}`,
-      definition: 'Weekly spend and leads sum to this page\'s quarter totals, so the blended cost per lead matches the list.',
-      columns: [
-        { key: 'w', label: 'Week' },
-        { key: 's', label: 'Spend', align: 'right' },
-        { key: 'l', label: 'Leads', align: 'right' },
-        { key: 'c', label: 'CPL', align: 'right' },
-      ],
-      rows: wk.cpl.map((c, i) => ({ w: `W${i + 1}${i === wk.shipWeek ? ' ▲' : ''}`, s: inr(wk.spend[i]), l: num(wk.leads[i]), c: inr(c) })),
-      foot: { w: 'Quarter', s: inr(wk.spend.reduce((a, b) => a + b, 0)), l: num(wk.leads.reduce((a, b) => a + b, 0)), c: inr(cpl!) },
-      note: wk.shipWeek >= 0 ? `▲ marks week ${wk.shipWeek + 1}, when ${wk.shipLabel.toLowerCase()}.` : undefined,
-    })
-
   return (
     <div className="mx-auto max-w-[1000px] px-8 py-7">
       {header}
 
-      <SectionHead title="The chain" hint={`${label} · how spend becomes a lead`} right={<InvestigateLink onClick={chainDrill} />} />
-      <Card className="p-5">
-        <FunnelChain pageId={p.id} />
-        <p className="mt-3 text-[11.5px] text-fg-subtle">{Math.round(gap * 100)}% of clicks did not become visits — bounces before load, ad blockers, and direct traffic. Shown, not hidden.</p>
-      </Card>
-
-      <TicketRevenue pageId={p.id} name={p.name} biz={pageBiz(p.id)} f={f} hint="enrolment revenue from this page" campaigns={campaignsForPage(p.id).map((c) => ({ name: c.name, biz: campaignBiz(c) }))} />
-
-      <div className="mt-5">
-        <SectionHead title="Cost per lead over time" hint="this page · weekly" right={<InvestigateLink onClick={trendDrill} />} />
-        <Card className="p-5">
-          <div className="mb-2 flex flex-wrap items-center gap-5">
-            <div className="flex items-center gap-2">
-              <span className="tnum text-[18px] font-bold text-fg">{inr(series[series.length - 1])}</span>
-              <span className="text-[11.5px] text-fg-subtle">latest week</span>
-            </div>
-            <span className={cn('text-[12.5px] font-semibold', sinceDelta >= 0 ? 'text-pos' : 'text-neg')}>{sinceDelta >= 0 ? '↓' : '↑'} {Math.abs(sinceDelta)}% since the quarter began</span>
-            <Badge tone={reg.tone} className="ml-auto">{reg.txt}</Badge>
-          </div>
-          <PageCplChart pageId={p.id} height={220} />
-        </Card>
-      </div>
+      <PageDashboard p={p} />
 
       <div className="mt-5"><TestInfo id={p.id} /></div>
       <div className="mt-5"><AdsPanel id={p.id} /></div>

@@ -6,6 +6,7 @@ import { useToast } from '@/components/Toast'
 import { useNav } from '@/lib/nav'
 import { cap, lexiconOf, useTenant, type Lexicon, type Tenant } from '@/lib/tenant'
 import { cn } from '@/lib/utils'
+import { CrmSync } from '@/features/settings/CrmSync'
 
 const singular = (s: string) => s.replace(/s$/, '')
 
@@ -40,7 +41,7 @@ function deriveSettings(t: Tenant): S {
   }
 }
 
-const TABS = [['setup', 'Setup'], ['conn', 'Connections'], ['tracking', 'Tracking'], ['prog', 'offerings'], ['exp', 'Experiments'], ['privacy', 'Privacy & data'], ['alerts', 'Alerts'], ['team', 'Team']]
+const TABS = [['setup', 'Setup'], ['conn', 'Connections'], ['crm', 'CRM sync'], ['tracking', 'Tracking'], ['prog', 'offerings'], ['exp', 'Experiments'], ['privacy', 'Privacy & data'], ['alerts', 'Alerts'], ['team', 'Team']]
 
 export function Settings() {
   const [tab, setTab] = useState('setup')
@@ -65,7 +66,8 @@ export function Settings() {
       </div>
 
       {tab === 'setup' && <Setup s={s} lex={lex} onGoto={setTab} />}
-      {tab === 'conn' && <Connections s={s} set={set} lex={lex} />}
+      {tab === 'conn' && <Connections s={s} set={set} lex={lex} onConfigureCrm={() => setTab('crm')} />}
+      {tab === 'crm' && <CrmSync />}
       {tab === 'tracking' && <Tracking s={s} set={set} toast={toast} lex={lex} />}
       {tab === 'prog' && <Programmes s={s} set={set} toast={toast} lex={lex} />}
       {tab === 'exp' && <Experiments s={s} set={set} lex={lex} />}
@@ -147,7 +149,7 @@ function ConnRow({ icon, name, meta, on, onToggle, onLabel }: { icon: string; na
     </div>
   )
 }
-function Connections({ s, set, lex }: { s: S; set: (fn: (d: S) => void) => void; lex: Lexicon }) {
+function Connections({ s, set, lex, onConfigureCrm }: { s: S; set: (fn: (d: S) => void) => void; lex: Lexicon; onConfigureCrm: () => void }) {
   return (
     <>
       <SectionHead title="Ad platforms" hint="where spend comes from" />
@@ -155,9 +157,9 @@ function Connections({ s, set, lex }: { s: S; set: (fn: (d: S) => void) => void;
         <ConnRow icon="G" name="Google Ads" meta="Customer 5708589162 · 21 campaigns · synced 9:21 AM" on={s.conn.google} onToggle={() => set((d) => { d.conn.google = !d.conn.google })} onLabel="Syncing" />
         <ConnRow icon="M" name="Meta Ads" meta="Reads spend back into campaign reporting · ID macros for landing pages" on={s.conn.meta} onToggle={() => set((d) => { d.conn.meta = !d.conn.meta })} onLabel="Syncing" />
       </Card>
-      <SectionHead title="Leads & outcomes" hint="where leads and outcomes live" />
+      <SectionHead title="Leads & outcomes" hint="where leads and outcomes live" right={<button onClick={onConfigureCrm} className="text-[12.5px] font-medium text-brand hover:text-brand-hover">Map CRM fields →</button>} />
       <Card>
-        <ConnRow icon="SL" name="CRM" meta={`Every ${lex.conversion.one} posts in as a lead; variant id written back`} on={s.conn.crm} onToggle={() => set((d) => { d.conn.crm = !d.conn.crm })} onLabel="Connected" />
+        <ConnRow icon="SL" name="CRM" meta={`Every ${lex.conversion.one} posts in as a lead; map your fields in CRM sync`} on={s.conn.crm} onToggle={() => set((d) => { d.conn.crm = !d.conn.crm })} onLabel="Connected" />
         <ConnRow icon="W" name="Conversions webhook" meta="Turns spend into cost per outcome; exports conversions back to Google Ads" on={s.conn.convWebhook} onToggle={() => set((d) => { d.conn.convWebhook = !d.conn.convWebhook })} onLabel="Secret created" />
         <ConnRow icon="C" name="Microsoft Clarity" meta="Heatmaps & session replay on your pages" on={s.conn.clarity} onToggle={() => set((d) => { d.conn.clarity = !d.conn.clarity })} onLabel="On your pages" />
       </Card>

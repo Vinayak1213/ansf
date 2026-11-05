@@ -42,8 +42,11 @@ export function pageWeekly(p: Page) {
 
   const Lw = Array.from({ length: N }, (_, i) => 1 + 0.03 * i)
   const ls = Lw.reduce((a, b) => a + b, 0)
-  const L = Lw.map((w) => Math.max(1, Math.round((Lq * w) / ls)))
-  L[N - 1] += Lq - L.reduce((a, b) => a + b, 0)
+  // non-negative weekly leads summing EXACTLY to Lq (largest-remainder; all zeros when Lq === 0)
+  const Lx = Lw.map((w) => (Lq * w) / ls)
+  const L = Lx.map((x) => Math.floor(x))
+  let lrem = Lq - L.reduce((a, b) => a + b, 0)
+  for (const { i } of Lx.map((x, i) => ({ i, f: x - Math.floor(x) })).sort((a, b) => b.f - a.f)) { if (lrem <= 0) break; L[i]++; lrem-- }
 
   const beforeCpl = ended ? (ecpl(ended.control) ?? cur * 1.12) : cur * 1.12
   const C: number[] = []
@@ -58,13 +61,15 @@ export function pageWeekly(p: Page) {
     }
   }
   const Sraw = C.map((c, i) => c * L[i])
-  const k = Sq / Sraw.reduce((a, b) => a + b, 0)
-  const S = Sraw.map((s) => Math.round(s * k))
+  // a page can carry spend with no leads (a leak) — fall back to a gentle shape so spend stays well-defined
+  const Sshape = Sraw.reduce((a, b) => a + b, 0) > 0 ? Sraw : Lw
+  const k = Sq / Sshape.reduce((a, b) => a + b, 0)
+  const S = Sshape.map((s) => Math.round(s * k))
   S[N - 1] += Sq - S.reduce((a, b) => a + b, 0)
   return {
     spend: S,
     leads: L,
-    cpl: S.map((s, i) => Math.round(s / L[i])),
+    cpl: S.map((s, i) => (L[i] ? Math.round(s / L[i]) : 0)),
     shipWeek: ended ? shipWeek : running ? 5 : -1,
     shipLabel: ended ? 'Winner shipped' : running ? 'Test started' : '',
   }

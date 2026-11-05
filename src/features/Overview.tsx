@@ -8,7 +8,7 @@ import { RangePicker, useRange } from '@/lib/range'
 import { useNav } from '@/lib/nav'
 import { useInvestigate } from '@/components/Investigate'
 import { cn, inr, num } from '@/lib/utils'
-import { ACCOUNT, EXPERIMENTS, LEAKS, PAGES, QUARTER, VERDICT, cplTrend, ecpl, goalVarOf, isNVar, leakTotal, pageName, variantCpl } from '@/data/samurai'
+import { ACCOUNT, EXPERIMENTS, LEAKS, PAGES, QUARTER, VERDICT, cplTrend, ecpl, goalVarOf, isNVar, leakTotal, pageName, platformStats, variantCpl } from '@/data/samurai'
 import { accountBiz, money, pageBiz, ticketSize } from '@/data/business'
 import { expPage, readinessPct } from '@/data/experiments'
 import { pageNet } from '@/data/pages'
@@ -16,7 +16,7 @@ import { NetIcon } from '@/features/Pages'
 import { frictionHotspots, openBehavior } from '@/data/behavior'
 import { Activity, Sparkles } from 'lucide-react'
 import { cap, isOperatorView, lexiconOf, ownsSeededData, useTenant } from '@/lib/tenant'
-import { ConverterLift } from '@/features/leads/ConverterLift'
+import { ConversionIntel } from '@/features/leads/ConversionIntel'
 
 const stagger = { animate: { transition: { staggerChildren: 0.06 } } }
 const rise = { initial: { opacity: 0, y: 14 }, animate: { opacity: 1, y: 0, transition: { duration: 0.5, ease: [0.22, 1, 0.36, 1] as const } } }
@@ -122,9 +122,14 @@ export function Overview() {
           <RevenueCard f={f} label={label} />
         </motion.div>
 
-        {/* What converters do differently — the behaviour × outcome flagship (user-level layer) */}
+        {/* Audience — the descriptive user-analytics layer; a teaser into the full section */}
         <motion.div variants={rise}>
-          <ConverterLift />
+          <AudiencePeek />
+        </motion.div>
+
+        {/* Conversion intelligence — the behaviour × outcome flagship (user-level layer) */}
+        <motion.div variants={rise}>
+          <ConversionIntel />
         </motion.div>
 
         {/* Tests in flight */}
@@ -366,6 +371,44 @@ function RevenueCard({ f, label }: { f: number; label: string }) {
       <p className="mt-3 text-[11px] leading-relaxed text-fg-subtle">
         {num(enrolled)} {lex.goalUnit} × their ticket size (varies by {lex.offering.one} — avg {money(b.avgTicket ?? 0)}), at a 34% close-rate on qualified {lex.conversion.many}. Counts only what ad spend drove — the {lex.goalNoun} target above tracks all {lex.goalUnit}.
       </p>
+    </Card>
+  )
+}
+
+/* Audience teaser — a compact preview of the descriptive user-analytics section.
+   Measured facts only (sessions, site conversion, cheapest page, channel efficiency);
+   the full picture lives in the Audience section. No fixes, no money-to-act. */
+function AudiencePeek() {
+  const { go } = useNav()
+  const { tenant } = useTenant()
+  const lex = lexiconOf(tenant)
+  const totalSessions = PAGES.reduce((a, p) => a + p.visits, 0)
+  const siteConv = +((ACCOUNT.leads / totalSessions) * 100).toFixed(1)
+  const cheapest = PAGES.filter((p) => p.leads > 0).sort((a, b) => a.cpl! - b.cpl!)[0]
+  const ps = platformStats()
+  return (
+    <Card className="p-5">
+      <SectionHead
+        title="Audience"
+        hint="who your spend brings in"
+        icon={<Users className="h-4 w-4" />}
+        right={<button onClick={() => go('audience')} className="inline-flex items-center gap-1 text-[12.5px] font-medium text-navy hover:text-navy-hover">Open Audience <ArrowRight className="h-3.5 w-3.5" /></button>}
+      />
+      <p className="text-[13.5px] leading-relaxed text-fg-muted">
+        <b className="tnum text-fg">{num(totalSessions)}</b> sessions across {PAGES.length} pages — <b className="tnum text-fg">{siteConv}%</b> became {lex.conversion.many}. <b className="font-semibold text-fg">{cheapest.name}</b> converts them cheapest, and Google brings {lex.conversion.many} at {ps.ratio}× the efficiency of Meta.
+      </p>
+      <div className="mt-3.5 flex flex-wrap gap-2">
+        {(['google', 'meta'] as const).map((n) => {
+          const d = n === 'google' ? ps.google : ps.meta
+          return (
+            <span key={n} className="inline-flex items-center gap-1.5 rounded-full border border-line bg-sunken px-2.5 py-1 text-[12px]">
+              <NetIcon net={n} />
+              <span className="capitalize text-fg-muted">{n}</span>
+              <span className="tnum font-semibold text-fg">{inr(d.cpl)}/{lex.conversion.one}</span>
+            </span>
+          )
+        })}
+      </div>
     </Card>
   )
 }

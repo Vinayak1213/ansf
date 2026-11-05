@@ -3,6 +3,7 @@ import { useInvestigate } from '@/components/Investigate'
 import { inr, num } from '@/lib/utils'
 import { money, ticketSize, type Biz } from '@/data/business'
 import { C } from '@/lib/tokens'
+import { cap, lexiconOf, useTenant } from '@/lib/tenant'
 
 /* "What it returned" — the cost ↔ revenue story for one page / campaign, as a KPI donut: the ring
    is each enrolment's revenue, the dark sliver is what it cost to win, and the centre is the return.
@@ -12,8 +13,11 @@ import { C } from '@/lib/tokens'
 const R = 46
 const CIRC = 2 * Math.PI * R
 
-export function TicketRevenue({ pageId, name, biz, f, hint, campaigns }: { pageId: string; name: string; biz: Biz; f: number; hint: string; campaigns?: { name: string; biz: Biz }[] }) {
+export function TicketRevenue({ pageId, name, biz, f, hint, campaigns, bare }: { pageId: string; name: string; biz: Biz; f: number; hint: string; campaigns?: { name: string; biz: Biz }[]; bare?: boolean }) {
   const investigate = useInvestigate()
+  const { tenant } = useTenant()
+  const lex = lexiconOf(tenant)
+  const unit = lex.goalUnit.replace(/s$/, '') // singular: enrolment / order / sign-up
   const enrolled = Math.round(biz.enrolled * f)
   if (enrolled <= 0) return null
   const spend = Math.round(biz.spend * f)
@@ -30,11 +34,11 @@ export function TicketRevenue({ pageId, name, biz, f, hint, campaigns }: { pageI
       multi
         ? {
             title: `What it returned — ${name}`,
-            definition: `This page is funded by ${campaigns!.length} campaigns — here's the cost vs revenue each one brought. They combine into the page total below. Per-enrolment ticket sizes sync from your AMS.`,
+            definition: `This page is funded by ${campaigns!.length} campaigns — here's the cost vs revenue each one brought. They combine into the page total below. Deal values sync from your CRM.`,
             columns: [
               { key: 'camp', label: 'Campaign' },
               { key: 's', label: 'Spend', align: 'right' },
-              { key: 'e', label: 'Enrol', align: 'right' },
+              { key: 'e', label: 'Closed', align: 'right' },
               { key: 'rev', label: 'Revenue', align: 'right' },
               { key: 'cac', label: 'CAC', align: 'right' },
               { key: 'roas', label: 'Return', align: 'right' },
@@ -54,14 +58,14 @@ export function TicketRevenue({ pageId, name, biz, f, hint, campaigns }: { pageI
           }
         : {
             title: `What it returned — ${name}`,
-            definition: `How ${inr(spend)} of ad spend becomes revenue: leads → sales-qualified → enrolled (34% close-rate), each paying their ticket. Per-enrolment ticket sizes sync from your AMS — the average is used here.`,
+            definition: `How ${inr(spend)} of ad spend becomes revenue: leads → qualified → closed (34% close-rate), each worth its deal value. Deal values sync from your CRM — the average is used here.`,
             columns: [{ key: 'k', label: 'Step' }, { key: 'v', label: '', align: 'right' }],
             rows: [
               { k: 'Ad spend', v: inr(spend) },
               { k: 'Leads', v: num(Math.round(biz.leads * f)) },
-              { k: 'Sales-qualified', v: num(Math.round(biz.qualified * f)) },
-              { k: 'Enrolled', v: num(enrolled) },
-              { k: 'Average ticket', v: money(avg) },
+              { k: 'Qualified', v: num(Math.round(biz.qualified * f)) },
+              { k: cap(lex.goalUnit), v: num(enrolled) },
+              { k: 'Average deal value', v: money(avg) },
               { k: 'Revenue', v: money(revenue) },
               { k: 'Cost to win one (CAC)', v: inr(cac) },
               { k: 'Return (ROAS)', v: `${roas}×` },
@@ -70,12 +74,10 @@ export function TicketRevenue({ pageId, name, biz, f, hint, campaigns }: { pageI
           },
     )
 
-  return (
-    <div className="mt-5">
-      <SectionHead title="What it returned" hint={hint} right={<InvestigateLink onClick={drill} />} />
-      <Card className="p-5">
+  const inner = (
+    <>
         <p className="text-[13.5px] leading-relaxed text-fg-muted">
-          {inr(spend)} spent{multi ? <> across <b className="text-fg">{campaigns!.length} campaigns</b></> : null} → <b className="text-fg">{num(enrolled)}</b> enrolment{enrolled === 1 ? '' : 's'} → <b className="tnum text-pos">{money(revenue)}</b> revenue.
+          {inr(spend)} spent{multi ? <> across <b className="text-fg">{campaigns!.length} campaigns</b></> : null} → <b className="text-fg">{num(enrolled)}</b> {unit}{enrolled === 1 ? '' : 's'} → <b className="tnum text-pos">{money(revenue)}</b> revenue.
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-x-7 gap-y-4">
@@ -96,7 +98,7 @@ export function TicketRevenue({ pageId, name, biz, f, hint, campaigns }: { pageI
 
           {/* the two numbers */}
           <div className="min-w-[180px] flex-1 space-y-3">
-            <div className="text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">Per enrolment</div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-fg-subtle">Per {unit}</div>
             <div className="flex items-center justify-between gap-3">
               <span className="flex items-center gap-2 text-[13px] text-fg-muted"><i className="h-2.5 w-2.5 rounded-[3px]" style={{ background: C.pos }} />Revenue it brings</span>
               <b className="tnum text-[15px] font-bold text-pos">{money(avg)}</b>
@@ -105,14 +107,20 @@ export function TicketRevenue({ pageId, name, biz, f, hint, campaigns }: { pageI
               <span className="flex items-center gap-2 text-[13px] text-fg-muted"><i className="h-2.5 w-2.5 rounded-[3px]" style={{ background: C.navy }} />Cost to win one</span>
               <b className="tnum text-[15px] font-bold text-fg">{inr(cac)}</b>
             </div>
-            <p className="border-t border-line pt-2.5 text-[11px] leading-relaxed text-fg-subtle">The ring is what each enrolment brings; the dark sliver is what it cost to win it.</p>
+            <p className="border-t border-line pt-2.5 text-[11px] leading-relaxed text-fg-subtle">The ring is what each {unit} brings; the dark sliver is what it cost to win it.</p>
           </div>
         </div>
 
         <p className="mt-3.5 border-t border-line pt-3 text-[11.5px] leading-relaxed text-fg-muted">
-          A higher cost to acquire is worth it when the ticket is bigger — what matters is the <b className="text-fg">return</b>.{multi ? <> Open <b className="text-fg">Investigate</b> for the split by campaign.</> : <> Per-enrolment ticket sizes sync from your AMS; the average is <b className="tnum text-fg">{money(avg)}</b>.</>}
+          A higher cost to acquire is worth it when the deal is bigger — what matters is the <b className="text-fg">return</b>.{multi && !bare ? <> Open <b className="text-fg">Investigate</b> for the split by campaign.</> : <> Deal values sync from your CRM; the average is <b className="tnum text-fg">{money(avg)}</b>.</>}
         </p>
-      </Card>
+    </>
+  )
+  if (bare) return inner
+  return (
+    <div className="mt-5">
+      <SectionHead title="What it returned" hint={hint} right={<InvestigateLink onClick={drill} />} />
+      <Card className="p-5">{inner}</Card>
     </div>
   )
 }

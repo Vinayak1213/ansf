@@ -19,8 +19,64 @@ const fmt = (s: number) => { const x = Math.max(0, Math.round(s)); return `${Mat
 const TAG_TONE: Record<string, string> = { 'rage click': 'bg-neg-tint text-neg', 'form error': 'bg-neg-tint text-neg', 'dead click': 'bg-warn-tint text-warn', 'quick-back': 'bg-warn-tint text-warn', bounced: 'bg-sunken text-fg-muted', left: 'bg-sunken text-fg-muted', converted: 'bg-pos-tint text-pos' }
 const tagTone = (t: string) => TAG_TONE[t] ?? (t.startsWith('scrolled') ? 'bg-navy-tint text-navy' : 'bg-sunken text-fg-muted')
 
+/* A scenario lets a caller (e.g. Visitor Intelligence) reconstruct a session along a specific
+   journey + outcome, so the replay matches the pattern/driver it's shown under instead of a
+   generic timeline. Without one, reconstruction falls back to the session's own tags. */
+export type ReplayOutcome = 'converted' | 'left' | 'loop' | 'error' | 'field-drop'
+export interface Scenario { journey: string[]; outcome: ReplayOutcome; headline: string; fix?: string; form?: { filled: string[]; stall: string } }
+
+const STAGE_EVENT: Record<string, { label: string; detail: string }> = {
+  Hero: { label: 'Viewed the hero', detail: 'Scanned the headline and main CTA' },
+  Testimonials: { label: 'Read the testimonials', detail: 'Looked for proof before deciding' },
+  Programme: { label: 'Explored the programme', detail: 'Read the programme details' },
+  Fees: { label: 'Checked the fees', detail: 'Looked at pricing and payment' },
+  FAQ: { label: 'Opened the FAQ', detail: 'Looked for answers to open questions' },
+  Apply: { label: 'Clicked the main CTA', detail: 'Tapped Apply' },
+  Enquiry: { label: 'Reached the enquiry form', detail: 'Scrolled to the form' },
+}
+const stageEvent = (st: string) => STAGE_EVENT[st] ?? { label: `Viewed ${st.toLowerCase()}`, detail: '' }
+
+function endEvents(outcome: ReplayOutcome, dur: number): REvent[] {
+  const at = (f: number) => Math.round(dur * f)
+  if (outcome === 'converted') return [
+    { t: at(0.78), label: 'Filled the form', detail: 'Completed the fields', kind: 'neutral' },
+    { t: at(0.96), label: 'Submitted — became a lead', detail: 'Form accepted · reconciled into CPL', kind: 'success' },
+  ]
+  if (outcome === 'error') return [
+    { t: at(0.58), label: 'Tapped Submit', detail: 'Filled the fields and tapped Submit', kind: 'neutral' },
+    { t: at(0.74), label: 'Submit did nothing', detail: 'No request fired — the form breaks on this device', kind: 'friction' },
+    { t: at(0.96), label: 'Rage-clicked, then left', detail: 'Hit Submit again, then abandoned · no lead', kind: 'friction' },
+  ]
+  if (outcome === 'loop') return [{ t: at(0.96), label: 'Left to compare elsewhere', detail: 'Bounced between sections, then exited without enquiring', kind: 'neutral' }]
+  return [{ t: at(0.96), label: 'Left without enquiring', detail: 'No form interaction · no lead', kind: 'neutral' }]
+}
+
+function fromScenario(s: BehSession, sc: Scenario): REvent[] {
+  const dur = Math.max(s.durSec, 6)
+  const land: REvent = { t: 0, label: 'Landed on the page', detail: `From ${s.source} · ${s.device}`, kind: 'neutral' }
+  // form stall — show the fields being completed, then the hesitation on one field
+  if (sc.form) {
+    const secs = sc.journey.filter((x) => x !== 'Exit')
+    const steps = secs.length + 1 + sc.form.filled.length + 1
+    let i = 0
+    const at = () => Math.round(dur * (0.1 + 0.82 * (++i / steps)))
+    const ev: REvent[] = [land]
+    secs.forEach((st) => ev.push({ t: at(), kind: 'neutral', ...stageEvent(st) }))
+    ev.push({ t: at(), label: 'Reached the enquiry form', detail: 'Scrolled to the form and started filling it', kind: 'neutral' })
+    sc.form.filled.forEach((f) => ev.push({ t: at(), label: `Filled the ${f.toLowerCase()} field`, detail: 'Completed it and moved on', kind: 'neutral' }))
+    ev.push({ t: at(), label: `Stalled on ‘${sc.form.stall}’`, detail: 'Hesitated, then left without finishing — no lead', kind: 'friction' })
+    return ev
+  }
+  // the enquiry/submit steps live in endEvents for the error case, so drop them from the middle
+  const mids = sc.journey.filter((x) => x !== 'Exit' && !(sc.outcome === 'error' && x === 'Enquiry'))
+  const n = mids.length
+  const mid: REvent[] = mids.map((st, i) => ({ t: Math.round(dur * (0.12 + 0.42 * ((i + 1) / (n + 1)))), kind: 'neutral' as Kind, ...stageEvent(st) }))
+  return [land, ...mid, ...endEvents(sc.outcome, dur)]
+}
+
 /** Reconstruct a plausible, tag-consistent event timeline for one session. */
-function reconstruct(s: BehSession, page: Page): REvent[] {
+function reconstruct(s: BehSession, page: Page, scenario?: Scenario): REvent[] {
+  if (scenario) return fromScenario(s, scenario)
   const dur = Math.max(s.durSec, 6)
   const at = (frac: number) => Math.round(dur * frac)
   const has = (t: string) => s.tags.some((x) => x === t || x.startsWith(t))
@@ -68,16 +124,17 @@ function reconstruct(s: BehSession, page: Page): REvent[] {
   ]
 }
 
-function verdict(page: Page, headline?: string): { tone: Kind; text: string; fix?: string } {
+function verdict(page: Page, headline?: string, scenario?: Scenario): { tone: Kind; text: string; fix?: string } {
+  if (scenario) return { tone: scenario.outcome === 'converted' ? 'success' : (scenario.outcome === 'error' || scenario.outcome === 'field-drop') ? 'friction' : 'neutral', text: scenario.headline, fix: scenario.fix }
   if (headline) return { tone: 'neutral', text: headline, fix: 'Watch both arms to see the behavioural reason behind the number.' }
   if (page.fault === 'broken_form') return { tone: 'friction', text: "One of the sessions behind this page's money leak — the mobile form fails below 380px, so paid clicks can't convert.", fix: 'Fix: make the form responsive and verify Submit fires a request.' }
   if (page.fault === 'closed_intake') return { tone: 'friction', text: "Spend is still reaching an intake that has closed, so these visits can't become leads.", fix: 'Fix: pause the campaign or point the ad at a live intake.' }
   return { tone: 'success', text: 'A clean run — the page turned a paid click into a reconciled lead.' }
 }
 
-export function SessionReplayModal({ session, page, headline, onClose }: { session: BehSession | null; page: Page; headline?: string; onClose: () => void }) {
+export function SessionReplayModal({ session, page, headline, scenario, onClose }: { session: BehSession | null; page: Page; headline?: string; scenario?: Scenario; onClose: () => void }) {
   const toast = useToast()
-  const events = useMemo(() => (session ? reconstruct(session, page) : []), [session, page])
+  const events = useMemo(() => (session ? reconstruct(session, page, scenario) : []), [session, page, scenario])
 
   // escape to close
   useEffect(() => {
@@ -87,7 +144,7 @@ export function SessionReplayModal({ session, page, headline, onClose }: { sessi
     return () => window.removeEventListener('keydown', onKey)
   }, [session, onClose])
 
-  const v = session ? verdict(page, headline) : null
+  const v = session ? verdict(page, headline, scenario) : null
 
   return (
     <AnimatePresence>
